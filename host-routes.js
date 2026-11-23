@@ -59,7 +59,8 @@ import { flushMeetings, meetingIsEmpty } from './host-persistence.js'
 import { packageMeeting, importPackage } from './host-package.js'
 import { modelState, installModel, importModel, activateModel, removeModel } from './host-models.js'
 import { readReport, refreshReport, repairCapability, capabilitiesPath, REPAIR_ACTIONS } from './host-capabilities.js'
-import { cloudTranscribe, cloudEmbed, cloudSummary, writeCloudSettings, testCloud, redact, cloudState } from './host-providers.js'
+import { cloudTranscribe, cloudEmbed, cloudSummary, readCloudSettings, writeCloudSettings, testCloud, cloudLlmComplete, redact, cloudState } from './host-providers.js'
+import { cleanSpeakerPrefix, normalizeSpeaker, cloudMinutesMessages } from './host-cloud-actions.js'
 import {
   readSpeakerSettings,
   writeSpeakerSettings,
@@ -415,11 +416,21 @@ export function createHandler(ctx) {
               // The on-machine result stays beside the cloud one: turning on a cloud model
               // must never erase what this machine heard (DESIGN §3.2).
               if (typeof cue.localText !== 'string') cue.localText = cue.text
-              cue.text = answer.text
+              // R4: the cloud answer is kept verbatim for traceability, and its speaker token
+              // is normalized into the same S1/S2 vocabulary the local labeller uses. The
+              // local `cue.speaker` below still wins: a conflict is recorded, never rewritten.
+              cue.cloudText = answer.text
+              cue.cloudSpeaker = normalizeSpeaker(answer.segments, { map: (meeting.cloudSpeakerMap ??= {}) })
+              // Cleaning the "1: " / "SPEAKER_00: " prefix is the person's choice; the raw
+              // answer above keeps the original either way.
+              const cloudAsr = await readCloudSettings().then((value) => value.asr).catch(() => null)
+              cue.text = cloudAsr !== null && cloudAsr.stripSpeakerPrefix !== false
+                ? cleanSpeakerPrefix(answer.text).text
+                : answer.text
               cue.asrModel = answer.model
               meeting.asrModel = answer.model
               cloudHints = Array.isArray(answer.segments) ? answer.segments : []
-              cloud = { used: true, skipped: false, message: '', model: answer.model }
+              cloud = { used: true, skipped: false, message: '', model: answer.model, degraded: answer.degraded === true }
             }
           } catch (failure) {
             cloud = {
@@ -1125,10 +1136,14 @@ export function createHandler(ctx) {
 
       if (method === 'POST' && route === '/cloud') {
         const body = JSON.parse((await readBody(req)).toString('utf8'))
-        const stored = await writeCloudSettings(body)
+        // One whitelist for every writer: an unknown field rejects the whole patch instead of
+        // being silently dropped, and a saved key can never come back out of here.
+        const outcome = await writeCloudSettings(body)
+        if (outcome.ok !== true) {
+          sendJson(res, 400, { error: outcome.error, rejected: outcome.rejected })
+          return
+        }
         sendJson(res, 200, await cloudSummary())
-        // The write is reported through the summary, which cannot echo a key back.
-        void stored
         return
       }
 
@@ -1319,19 +1334,38 @@ export function createHandler(ctx) {
           sendJson(res, 404, { error: 'unknown meeting' })
           return
         }
-        const content = minutesText(meeting)
         const stamp = stampOf(meeting.startedAt)
+        const useCloudLlm = body.useCloudLlm === true
         if (body.format === 'docx') {
           // Word is for handing the minutes to someone; Markdown stays the machine-readable copy.
           const docxName = await writeDocx(ctx, meeting, `${stamp}-minutes.docx`)
-          sendJson(res, 200, { name: docxName })
+          const reply = { name: docxName }
+          // The Word renderer reads the structured record, not a Markdown draft, so the cloud
+          // rewrite cannot be injected into it. Say that instead of pretending it was used.
+          if (useCloudLlm) reply.llm = { ok: false, reason: 'Word 导出使用本机结构化内容，云端纪要只用于 Markdown' }
+          sendJson(res, 200, reply)
           return
+        }
+        let content = minutesText(meeting)
+        // R2: the cloud model edits the on-machine minutes. A failure keeps the local text:
+        // a broken LLM must never cost the document the person asked for.
+        let llm = { ok: false, reason: '' }
+        if (useCloudLlm) {
+          const outcome = await cloudLlmComplete(cloudMinutesMessages(meeting))
+          if (outcome.ok === true) {
+            content = outcome.text
+            llm = { ok: true, reason: '' }
+          } else {
+            llm = { ok: false, reason: outcome.reason }
+          }
         }
         const name = `${stamp}-minutes.md`
         const directory = exportDirectory()
         await mkdir(directory, { recursive: true })
         await writeFile(join(directory, name), content, 'utf8')
-        sendJson(res, 200, { name, size: Buffer.byteLength(content, 'utf8'), content })
+        const reply = { name, size: Buffer.byteLength(content, 'utf8'), content }
+        if (useCloudLlm) reply.llm = llm
+        sendJson(res, 200, reply)
         return
       }
 
