@@ -403,7 +403,7 @@ check('拒绝过多条目的压缩包', await importPackage(zipWrite(Array.from(
 const version = await call('/version')
 check('版本接口回插件自己的版本与作者', version.status === 200
   && typeof version.value.version === 'string' && version.value.version !== '0.0.0'
-  && version.value.name === 'dsh-meeting-room'
+  && version.value.name === 'dsh-meeting-studio'
   && String(version.value.author).includes('yangdaoquan@qq.com'))
 
 // ---------------------------------------------------------------------------
@@ -910,8 +910,46 @@ meetings.clear()
 await persistence.restoreMeetings(ctx)
 check('重启后恢复会议', meetings.has('m-brief') && meetings.get('m-brief').tasks.length >= 1)
 
-await fs.rm(tmp, { recursive: true, force: true })
+// ---------------------------------------------------------------------------
+// 9a. 能力自检（R6）：五项齐全、如实报缺、能落盘、能回读
+// ---------------------------------------------------------------------------
+// The point of this section is honesty, not green lights: a machine without the speech
+// bundle MUST report asr missing with a fix, and a python that can import but not write
+// MUST NOT be reported as ready.
+const capabilities = await import(`${plugin}/host-capabilities.js`)
+const checked = await capabilities.refreshReport(ctx)
+const rowIds = ['asr', 'speaker', 'handwriting', 'cloud', 'python']
+check('自检五路齐全且每路都有布尔结论', rowIds.every((id) => {
+  const row = checked.report.checks[id]
+  return row !== undefined && typeof row.ok === 'boolean' && typeof row.message === 'string' && typeof row.fix === 'string'
+}))
+check('自检报告落盘并可回读', checked.saved === true && (await capabilities.readReport()).report?.checkedAt === checked.report.checkedAt)
+check('没有语音服务时 asr 如实报缺失并给修法', checked.report.checks.asr.ok === false
+  && checked.report.checks.asr.state === 'missing'
+  && checked.report.checks.asr.fix.includes('语音'))
+check('asr 缺失被算作阻断项，cloud/python 不算阻断', checked.report.summary.blocking.includes('asr')
+  && !checked.report.summary.blocking.includes('python')
+  && !checked.report.summary.blocking.includes('cloud'))
+const pythonRow = checked.report.checks.python
+check('python 探针按「能不能写」判定，而非只看路径', typeof pythonRow.detail.wrote === 'boolean'
+  && (pythonRow.ok === true ? pythonRow.detail.wrote === true : true))
+const probeLeftovers = await fs.readdir(join(tmp, 'meeting-room', 'exports')).catch(() => [])
+check('python 探测不留临时文件', probeLeftovers.every((name) => !name.startsWith('.capability-probe')))
+const capRead = await call('/capabilities')
+check('/capabilities 首读返回已保存的报告', capRead.status === 200 && capRead.value.saved === true && capRead.value.report !== null)
+const capRefresh = await call('/capabilities?refresh=1')
+check('/capabilities?refresh=1 会重新探测', capRefresh.status === 200 && capRefresh.value.stale === false
+  && capRefresh.value.report.checkedAt >= capRead.value.report.checkedAt)
+const badRepair = await call('/capabilities/repair', { action: 'nonsense' }, 'POST')
+check('不认识的修复动作被拒并列出允许值', badRepair.status === 400
+  && Array.isArray(badRepair.value.allowed)
+  && badRepair.value.allowed.includes('prepare-speaker'))
+const guidedRepair = await call('/capabilities/repair', { action: 'install-voice-bundle' }, 'POST')
+check('不可一键修的项给出人工指引而不是假装修好', guidedRepair.status === 400 && String(guidedRepair.value.error).includes('不认识的修复动作'))
+const cantRepair = await capabilities.repairCapability(ctx, 'python')
+check('python 缺依赖时不假装能一键修', cantRepair.started === false && cantRepair.message.includes('人工'))
 
+await fs.rm(tmp, { recursive: true, force: true })
 // ---------------------------------------------------------------------------
 // 0. 发布清单：装出去的包里必须带齐代码
 // ---------------------------------------------------------------------------

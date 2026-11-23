@@ -1,6 +1,7 @@
 {
-  "name": "dsh-meeting-room",
-  "version": "0.1.0-preview.7",
+  "name": "dsh-meeting-studio",
+  "version": "0.1.0-fork.1",
+  "forkedFrom": "https://github.com/kekydream/dsh-meeting-room",
   "description": "会议记录：本机转写、发言人分离、要点与工作安排、手写笔记、复盘与纪要 · Meeting notes inside DeepSeek Harness",
   "author": "杨道泉 <yangdaoquan@qq.com> (博尔塔拉融媒体中心媒体传播与认知重点实验室)",
   "type": "module",
@@ -8,8 +9,7 @@
     "type": "git",
     "url": "git+https://github.com/kekydream/dsh-meeting-room.git"
   },
-  "homepage": "https://github.com/kekydream/dsh-meeting-room#readme",
-  "bugs": {
+  "homepage": "https://github.com/kekydream/dsh-meeting-room#readme",  "bugs": {
     "url": "https://github.com/kekydream/dsh-meeting-room/issues",
     "email": "yangdaoquan@qq.com"
   },
@@ -49,6 +49,7 @@
     "icon.svg",
     "MODELS.md",
     "LICENSE",
+    "NOTICE",
     "THIRD-PARTY-NOTICES.md",
     "README.md",
     "CHANGELOG.md",

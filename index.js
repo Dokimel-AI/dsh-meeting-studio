@@ -28,6 +28,7 @@ import { disposeSpeakers } from './host-speaker.js'
 import { disposeHandwriting } from './host-handwriting.js'
 import { flushMeetings, restoreMeetings } from './host-persistence.js'
 import { migrateLegacyExports } from './host-helpers.js'
+import { refreshReport } from './host-capabilities.js'
 import { setSessionStore, ensureMeetingForSession, reapMeetingForSession, recordingMeetingForSession } from './host-sessions.js'
 import {
   readTranscript,
@@ -449,6 +450,22 @@ export function apply(ctx) {
     clearInterval(flushTimer)
     void flushMeetings(ctx)
   }, 'meeting-room: meeting store')
+
+  // ── Capability self-check ──────────────────────────────────────────────
+  // Measure once at activation so the first visit to the model center opens on facts
+  // instead of a spinner: which speech service is present, whether the speaker and
+  // handwriting models are on disk, whether the Python renderers can actually write, and
+  // whether the cloud is configured. Never awaited and never throwing: a probe may take a
+  // few seconds (it spawns Python), and a broken probe must not delay or break activation.
+  void refreshReport(ctx).then(
+    (outcome) => {
+      const ready = Object.entries(outcome.report.checks)
+        .filter(([, row]) => row.ok === true)
+        .map(([id]) => id)
+      bootLog('capabilities', `ready=${ready.join('+') || 'none'} saved=${outcome.saved === true ? 'yes' : 'no'}`)
+    },
+    (error) => { bootLog('capabilities-failed', error instanceof Error ? error.message : String(error)) },
+  )
 
   // ── Restore persisted meetings, THEN sweep restored sessions ────────────
   // The sweep must run after the store read back its files, or a restored

@@ -58,6 +58,7 @@ import { handwritingState, recognizeHandwriting, prepareHandwriting } from './ho
 import { flushMeetings, meetingIsEmpty } from './host-persistence.js'
 import { packageMeeting, importPackage } from './host-package.js'
 import { modelState, installModel, importModel, activateModel, removeModel } from './host-models.js'
+import { readReport, refreshReport, repairCapability, capabilitiesPath, REPAIR_ACTIONS } from './host-capabilities.js'
 import { cloudTranscribe, cloudEmbed, cloudSummary, writeCloudSettings, testCloud, redact, cloudState } from './host-providers.js'
 import {
   readSpeakerSettings,
@@ -1178,18 +1179,50 @@ export function createHandler(ctx) {
         return
       }
 
+      if (method === 'GET' && route === '/capabilities') {
+        // What this machine can actually do, as last measured. `?refresh=1` re-probes, which
+        // is what the panel's "check again" button does; the plain read is cheap and never
+        // downloads anything.
+        if (url.searchParams.get('refresh') === '1') {
+          const outcome = await refreshReport(ctx)
+          sendJson(res, 200, { report: outcome.report, path: capabilitiesPath(), saved: outcome.saved, error: outcome.error, stale: false })
+          return
+        }
+        const stored = await readReport()
+        sendJson(res, 200, {
+          report: stored.report,
+          path: stored.path,
+          saved: stored.report !== null,
+          error: '',
+          // A never-checked installation still gets a first answer instead of a null page.
+          stale: stored.report === null,
+        })
+        return
+      }
+
+      if (method === 'POST' && route === '/capabilities/repair') {
+        const body = JSON.parse((await readBody(req)).toString('utf8'))
+        const action = typeof body.action === 'string' ? body.action : ''
+        if (!REPAIR_ACTIONS.includes(action)) {
+          sendJson(res, 400, { error: `不认识的修复动作：${action === '' ? '(空)' : action}`, allowed: REPAIR_ACTIONS })
+          return
+        }
+        sendJson(res, 200, await repairCapability(ctx, action))
+        return
+      }
+
       if (method === 'GET' && route === '/version') {
         // What is actually installed, read from the plugin's own package.json, so the About
         // dialog can never drift from the release it belongs to.
         try {
           const info = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'))
           sendJson(res, 200, {
-            name: typeof info.name === 'string' ? info.name : 'dsh-meeting-room',
+            name: typeof info.name === 'string' ? info.name : 'dsh-meeting-studio',
             version: typeof info.version === 'string' ? info.version : '0.0.0',
             author: typeof info.author === 'string' ? info.author : '',
           })
         } catch (failure) {
-          sendJson(res, 200, { name: 'dsh-meeting-room', version: '0.0.0', author: '', error: String(failure) })
+          sendJson(res, 200, { name: 'dsh-meeting-studio', version: '0.0.0', author: '', error: String(failure) })
         }
         return
       }

@@ -32,18 +32,22 @@
 
 > 工时口径 = 1 名熟悉本仓的工程师。实际由我执行时按阶段交付，每个阶段结束给你「改了什么 / 怎么验证 / 还差什么 + 命令与真实输出」。
 
-**提交拆分（8 个 commit，按依赖顺序）**
+**提交拆分（按依赖顺序，实际执行以右侧「状态」为准）**
 
 ```
-c1 docs(fork): 基线、代码地图与 R1–R8 计划            ← 本次已产出
-c2 feat(capabilities): 启动自检 + capabilities.json + /capabilities 路由
+c1 docs(fork): 基线、代码地图与 R1–R8 计划            ← 已完成
+c2 feat(capabilities): 能力自检 + 品牌改名 dsh-meeting-studio   ← 已完成（两者合并提交：
+        品牌字符串就在本次要改的 /version 断言与路由兜底里，拆开会出现一个必红的中间提交）
 c3 feat(model-center): 左栏「模型中心」页签骨架（四块卡片，只读）
 c4 feat(cloud-ui): 云端 ASR/LLM/声纹三张卡片 + 供应商预设 + 测试连接
 c5 feat(cloud-negotiation): 能力探测、400 降级重试、capability 缓存
 c6 feat(cloud-speaker): segments.speaker 保留、S1/S2 归一化、前缀清洗开关
 c7 feat(tool): meeting_cloud（get/set/test/clear，与 UI 同一份校验）
-c8 test+docs: smoke 新增 6 组断言、README/MODELS/THIRD-PARTY-NOTICES、安装卸载脚本
+c8 test+docs: smoke 新增断言、README/MODELS/THIRD-PARTY-NOTICES、安装卸载脚本
 ```
+
+**已定**：包名/品牌 = `dsh-meeting-studio`（2026-11-23 李刚确认）；版本从 `0.1.0-preview.7` 起为 `0.1.0-fork.1`。
+**待办（不影响开工）**：品牌图标（`icon.svg` 目前仍是上游图标，发布前必须换；MIT 不授商标）、`repository`/`homepage` 待我们自己的远端仓库建好后替换。
 
 ## 2. R6 · 能力自检（修 债-02 / 债-11 / 债-19）
 
@@ -225,6 +229,8 @@ $ node smoke.mjs
 | 原生模块打包（onnxruntime/sherpa） | 本期不动构建脚本；只改依赖声明与安装校验 |
 | 模型许可证（声纹 CAM++ / DAMO 手写） | 逐个核对并写进 THIRD-PARTY-NOTICES；商用前单独确认，不默认可商用 |
 
-## 12. 需要你拍板的（一次只问一个）
+## 12. 决策记录
 
-**包名 / 品牌名**：`dsh-meeting-studio`（推荐，跟仓库名一致）还是别的？这一项决定 `package.json` 的 `name`、`cordis.patch.yml` 的 `name`、`locale/*.json` 的标题、README 首行与图标文件名——越早定越省返工。其余按默认推进：预设内置硅基流动/OpenAI/Groq/自定义，**默认不开启云端**（`mode: local` + `consent:false`）。
+- **2026-11-23 包名/品牌**：`dsh-meeting-studio`（李刚拍板）。`package.json` name/版本、`cordis.patch.yml` name、`NOTICE`、`/version` 兜底名同步改；`LICENSE` 原版权逐字保留。
+- 其余按默认推进：预设内置硅基流动/OpenAI/Groq/自定义；**默认不开启云端**（`mode: local` + `consent: false`）；`keepRemote` 默认 false。
+- 仍未定（不阻塞）：品牌图标、我们自己的远端仓库地址。

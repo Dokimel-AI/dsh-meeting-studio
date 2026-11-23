@@ -1,0 +1,28 @@
+dsh-meeting-studio
+==================
+
+This repository is a fork of dsh-meeting-room, used as the base of our own
+DeepSeek Harness meeting-notes plugin.
+
+Upstream
+--------
+  project : https://github.com/kekydream/dsh-meeting-room
+  version : 0.1.0-preview.7
+  commit  : 01838da67121b0bfa1fb3c18f7632890c73b28ce  (branch master)
+  licence : MIT
+  copyright: 博尔塔拉融媒体中心 · 杨道泉 (see LICENSE, kept verbatim)
+
+Fork
+----
+  project : dsh-meeting-studio
+  licence : MIT (same terms; the upstream copyright notice in LICENSE stays)
+  changes : modifications and additions made in this fork are Copyright (c)
+            the dsh-meeting-studio contributors, and are released under the
+            same MIT terms.
+
+Trademark
+---------
+The MIT licence grants rights to the code, not to the upstream project's name
+or marks. The package is therefore distributed under the name
+`dsh-meeting-studio` with its own icon; the upstream name is used only to
+credit the origin, as above.
