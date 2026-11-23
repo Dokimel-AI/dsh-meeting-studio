@@ -41,6 +41,7 @@ import {
   finalizeRecording,
   readSettings,
   meetingSession,
+  meetingCloud,
 } from './host-tools.js'
 import { MEETING_SCRIBE_SKILL, MEETING_SESSION_TOOL } from './skill-meeting-scribe.js'
 
@@ -371,6 +372,66 @@ export function apply(ctx) {
     },
     execute: saveDocument,
   }, 'meeting-room: meeting_save_document tool')
+
+  registerTool({
+    name: 'meeting_cloud',
+    description: 'Read, change, test or clear the cloud speech-recognition and cloud minutes-model settings (consent, mode, provider, endpoint, model, key) from the conversation, writing through the same server-side whitelist and probes as the Model Center panel so the two entry points can never disagree and a saved key is never echoed back.',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['get', 'set', 'test', 'clear'], description: 'get reads the masked settings; set writes the fields that are given; test probes each configured service like the panel\'s test-connection button; clear removes the saved addresses, models and keys but keeps consent and mode.' },
+        consent: { type: 'boolean', description: 'Whether the user has agreed to upload audio and text to the cloud. Nothing leaves the machine while this is false or mode is local.' },
+        mode: { type: 'string', enum: ['local', 'prefer-cloud', 'cloud-only'], description: 'local never calls out; prefer-cloud falls back to the on-machine model after repeated failures; cloud-only reports failures instead of falling back.' },
+        asr: {
+          type: 'object',
+          description: 'Cloud speech recognition. Omit the section to keep it unchanged.',
+          properties: {
+            provider: { type: 'string', enum: ['off', 'openai-compatible', 'custom'], description: 'off disables it; openai-compatible is an OpenAI-compatible transcription endpoint; custom is the same wire format under a name of your own.' },
+            baseUrl: { type: 'string', description: 'Service root, usually ending in /v1; the plugin appends /audio/transcriptions.' },
+            model: { type: 'string', description: 'Transcription model name, e.g. whisper-1 or FunAudioLLM/SenseVoiceSmall.' },
+            language: { type: 'string', description: 'Language hint such as zh; empty means the service decides.' },
+            apiKey: { type: 'string', description: 'New key to replace the saved one. An empty string keeps the saved key; use action=clear to remove it. The key is never echoed back.' },
+            keepRemote: { type: 'boolean', description: 'Whether the service may retain the audio; false sends retention=none.' },
+            stripSpeakerPrefix: { type: 'boolean', description: 'Whether to remove a leading speaker token such as "1: " from the transcribed text.' },
+          },
+          required: [],
+          additionalProperties: false,
+        },
+        speaker: {
+          type: 'object',
+          description: 'Cloud speaker vectors (optional). Omit the section to keep it unchanged.',
+          properties: {
+            provider: { type: 'string', enum: ['off', 'openai-compatible', 'custom'], description: 'off disables it.' },
+            baseUrl: { type: 'string', description: 'Service root; the plugin appends /speaker/embedding.' },
+            model: { type: 'string', description: 'Embedding model name.' },
+            apiKey: { type: 'string', description: 'New key to replace the saved one; empty keeps it, action=clear removes it.' },
+          },
+          required: [],
+          additionalProperties: false,
+        },
+        llm: {
+          type: 'object',
+          description: 'Cloud model that rewrites the minutes. Omit the section to keep it unchanged.',
+          properties: {
+            provider: { type: 'string', enum: ['off', 'openai-compatible', 'custom'], description: 'off disables it; custom also covers a keyless local server such as Ollama or LM Studio.' },
+            baseUrl: { type: 'string', description: 'Service root, usually ending in /v1; the plugin appends /chat/completions.' },
+            model: { type: 'string', description: 'Chat model name, e.g. gpt-4o-mini or Qwen/Qwen2.5-72B-Instruct.' },
+            apiKey: { type: 'string', description: 'New key to replace the saved one; empty keeps it, action=clear removes it.' },
+            temperature: { type: 'number', description: 'Sampling temperature from 0 to 2; defaults to 0.2.' },
+          },
+          required: [],
+          additionalProperties: false,
+        },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    output: {
+      schema: { type: 'string' },
+      render: (_args, value) => [{ type: 'text', text: value }],
+    },
+    execute: meetingCloud,
+  }, 'meeting-room: meeting_cloud tool')
 
   // ── Session ↔ meeting lifecycle (after the panel surface is safe) ───────
   try {

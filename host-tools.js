@@ -78,6 +78,15 @@ import { relabelFromRecording, knownSpeakerLabels } from './host-speaker.js'
 import { centroidsOf } from './host-voices.js'
 import { normalizeText } from './host-text.js'
 import { readTranscriptSettings } from './host-transcript.js'
+// R5: the cloud settings, their one whitelist and their probes live in host-providers /
+// host-cloud-actions; the tool calls those same functions instead of validating anything itself.
+import {
+  cloudSummary,
+  redact,
+  resetCloudFallback,
+  testCloud,
+  writeCloudSettings,
+} from './host-providers.js'
 
 // Re-export regex constants and seenText so consumers can import from this module.
 export {
@@ -2180,4 +2189,409 @@ export async function writeNote(args, exec) {
     status: 'draft',
   })
   return `Meeting ${meeting.id}: stored one handwritten note (${text.length} characters); it now holds ${meeting.notes.length} note(s).`
+}
+
+// ---------------------------------------------------------------------------
+// Cloud settings (R5)
+// ---------------------------------------------------------------------------
+
+/** The actions this tool accepts; the definition's enum in index.js must stay in step. */
+const CLOUD_ACTIONS = ['get', 'set', 'test', 'clear']
+
+/** How a stored recognition mode reads to a person. */
+const CLOUD_MODE_TEXT = {
+  local: 'local（只用本机，不发任何请求）',
+  'prefer-cloud': 'prefer-cloud（云端优先，连续失败后回退本机）',
+  'cloud-only': 'cloud-only（只用云端，失败直接报错、不回退）',
+}
+
+/** The probed services, in the order the test receipt lists them. */
+const CLOUD_KIND_TEXT = {
+  asr: '云端语音识别 ASR',
+  llm: '云端纪要 LLM',
+  speaker: '云端声纹 speaker',
+}
+
+/** The one whitelist, spelled out so a refusal can tell the model what it may write. */
+const CLOUD_FIELD_LIST = 'consent、mode、asr.{provider,baseUrl,model,language,apiKey,keepRemote,stripSpeakerPrefix}、'
+  + 'speaker.{provider,baseUrl,model,apiKey}、llm.{provider,baseUrl,model,apiKey,temperature}'
+
+/**
+ * Mask one receipt before it leaves this tool.
+ *
+ * The summary only ever says a key is set, but a provider's error text is copied into the
+ * receipt verbatim, so the last step before returning is always the mask the interface uses.
+ * @param text - the receipt.
+ * @returns the receipt with keys and authorization headers masked.
+ */
+function cloudReply(text) {
+  return redact(text)
+}
+
+/**
+ * Show a configured string, or say it is unset.
+ * @param value - the stored string.
+ * @param empty - what to print when it is empty.
+ * @returns the shown text.
+ */
+function cloudShown(value, empty = '（未填）') {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text === '' ? empty : text
+}
+
+/**
+ * Show a timestamp that came from settings or module state.
+ * @param at - epoch milliseconds; 0 or absent means nothing was recorded.
+ * @returns local date-time, or a placeholder.
+ */
+function cloudClockText(at) {
+  const value = Number(at)
+  return Number.isFinite(value) && value > 0 ? new Date(value).toLocaleString() : '（无记录）'
+}
+
+/**
+ * What the last ASR probe measured, as up to two lines.
+ * @param capability - `cloud.asr.capability` from the masked summary.
+ * @returns the lines.
+ */
+function cloudCapabilityLines(capability) {
+  if (capability === null || typeof capability !== 'object') {
+    return ['能力：还没有探测过（用 action=test 测一次就会写入缓存）']
+  }
+  const evidence = typeof capability.evidence === 'string' ? capability.evidence : ''
+  return [
+    `能力：verbose_json=${capability.supportsVerboseJson === true ? '支持' : '不支持'}`
+      + `　分段=${capability.returnsSegments === true ? '有' : '无'}`
+      + `　说话人=${capability.returnsSpeaker === true ? '有' : '无'}`,
+    `能力来源：模型 ${cloudShown(capability.model)}，探测于 ${cloudClockText(capability.probedAt)}`
+      + `${evidence === '' ? '' : `，证据：${evidence}`}`,
+  ]
+}
+
+/**
+ * Render the masked settings (the same payload GET /cloud serves) as lines for the model.
+ *
+ * The provider presets are left out on purpose: a catalogue is the panel's job, and one tool
+ * answer should carry only what a call can act on. The key is reported as set / unset and
+ * never read back.
+ * @param summary - result of cloudSummary().
+ * @returns the lines.
+ */
+function cloudSummaryLines(summary) {
+  const asr = summary.asr
+  const llm = summary.llm
+  const speaker = summary.speaker
+  const state = summary.state
+  const lines = [
+    '云端配置（与「模型中心」面板读写同一份设置）',
+    `同意上传：${summary.consent === true ? '是' : '否（所有云端请求都不会发出）'}`,
+    `识别方式：${CLOUD_MODE_TEXT[summary.mode] ?? summary.mode}`,
+    '',
+    `【云端语音识别 ASR】服务 ${cloudShown(asr.provider)}　地址 ${cloudShown(asr.baseUrl)}　主机 ${cloudShown(asr.host)}`,
+    `  模型 ${cloudShown(asr.model)}　语言 ${cloudShown(asr.language, '（自动）')}　密钥 ${asr.keySet === true ? '已设置（不回显）' : '未设置'}`,
+    `  远端留存音频：${asr.keepRemote === true ? '允许（请求不带 retention=none）' : '不允许（请求带 retention=none）'}　清洗说话人前缀：${asr.stripSpeakerPrefix === true ? '开' : '关'}`,
+    ...cloudCapabilityLines(asr.capability).map((line) => `  ${line}`),
+    '',
+    `【云端纪要 LLM】服务 ${cloudShown(llm.provider)}　地址 ${cloudShown(llm.baseUrl)}　主机 ${cloudShown(llm.host)}`,
+    `  模型 ${cloudShown(llm.model)}　密钥 ${llm.keySet === true ? '已设置（不回显）' : '未设置'}　温度 ${typeof llm.temperature === 'number' ? llm.temperature : '（默认）'}`,
+    '',
+    `【云端声纹 speaker】服务 ${cloudShown(speaker.provider)}　地址 ${cloudShown(speaker.baseUrl)}　主机 ${cloudShown(speaker.host)}`,
+    `  模型 ${cloudShown(speaker.model)}　密钥 ${speaker.keySet === true ? '已设置（不回显）' : '未设置'}`,
+    '',
+    `状态：${state.fallback === true ? '已回退本机（云端连续失败，请求已停止）' : '未回退'}　连续失败 ${Number(state.failures) || 0} 次　严格模式：${state.strict === true ? '是' : '否'}`,
+    `最近一次能力探测：${cloudClockText(asr.capability?.probedAt)}　最近一次云端纪要成功：${cloudClockText(state.lastAt)}`
+      + `${typeof state.lastModel === 'string' && state.lastModel !== '' ? `（${state.lastModel}）` : ''}`,
+  ]
+  if (typeof state.message === 'string' && state.message !== '') lines.push(`回退原因：${state.message}`)
+  lines.push('', '可执行：action=set 改配置、action=test 测连接、action=clear 清空地址与密钥。')
+  return lines
+}
+
+/**
+ * The field paths a successful write changed, in the order the model sent them.
+ *
+ * This only mirrors normalizeField's "an empty key keeps the saved one" rule for the receipt;
+ * the write itself is validated in `host-cloud-actions.js` and nowhere else.
+ * @param patch - the patch that was accepted.
+ * @returns the field paths.
+ */
+function cloudWrittenFields(patch) {
+  const fields = []
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'consent' || key === 'mode') {
+      fields.push(key)
+      continue
+    }
+    if (value === null || typeof value !== 'object') continue
+    for (const [name, fieldValue] of Object.entries(value)) {
+      // Empty key field = keep the saved key; null = clear it (normalizeField's own rule).
+      if (name === 'apiKey' && fieldValue === '') continue
+      fields.push(`${key}.${name}`)
+    }
+  }
+  return fields
+}
+
+/**
+ * The `set` receipt: one patch, the same writer the POST /cloud route calls, then the state.
+ *
+ * An unknown field rejects the whole patch (that is normalizeCloudPatch's rule), so a refusal
+ * says "nothing was written" and repeats the field list instead of implying a partial save.
+ * @param request - tool arguments including `action`.
+ * @returns the receipt.
+ */
+async function cloudSetReceipt(request) {
+  const patch = {}
+  for (const [key, value] of Object.entries(request)) {
+    if (key === 'action') continue
+    patch[key] = value
+  }
+  const given = Object.keys(patch)
+  const asked = cloudWrittenFields(patch)
+  if (given.length === 0 || asked.length === 0) {
+    const lines = [
+      given.length === 0
+        ? '没有提供要保存的字段，所以没有写入任何东西。'
+        : '没有写入任何东西：你给的字段都是「保持不变」的写法（apiKey 传空串 = 保留已保存的密钥）。',
+      `影响：配置保持原样。要改哪一项就传哪一项；可写字段：${CLOUD_FIELD_LIST}。要清空密钥用 action=clear。`,
+      '',
+      ...cloudSummaryLines(await cloudSummary()),
+    ]
+    return cloudReply(lines.join('\n'))
+  }
+  const outcome = await writeCloudSettings(patch)
+  if (outcome.ok !== true) {
+    const rejected = Array.isArray(outcome.rejected) ? outcome.rejected.filter((name) => typeof name === 'string' && name !== '') : []
+    const lines = [`没有保存：${outcome.error}`]
+    if (rejected.length > 0) lines.push(`被拒绝的字段：${rejected.join('、')}`)
+    lines.push(
+      '影响：整份配置未写入，webhooks.json 的 cloud 段保持原样，界面与识别行为不变。',
+      `可写字段只有：${CLOUD_FIELD_LIST}。`,
+      rejected.length > 0
+        ? '修法：去掉或改正这些字段后重试；不确定有哪些字段就先 action=get 看当前配置。'
+        : '修法：按这句错误改正取值后重试（mode 只能是 local / prefer-cloud / cloud-only，consent 只能是 true/false）。',
+      '',
+      ...cloudSummaryLines(await cloudSummary()),
+    )
+    return cloudReply(lines.join('\n'))
+  }
+  const written = cloudWrittenFields(patch)
+  const lines = [
+    written.length === 0
+      ? '已保存：没有实际变化的字段（apiKey 传空串表示保持已保存的密钥；要清空用 action=clear）。'
+      : `已保存：${written.join('、')}`,
+    '影响：立即生效——下一次云端识别与云端纪要按新配置走；录音、本机转写和本地纪要不受影响。',
+    '',
+    ...cloudSummaryLines(await cloudSummary()),
+  ]
+  return cloudReply(lines.join('\n'))
+}
+
+/**
+ * The `clear` receipt: remove the addresses, models and keys, keep the privacy decision.
+ *
+ * `consent` and `mode` stay as they are unless the caller states them, and whatever is passed
+ * goes through the same writer (so an invalid mode rejects the whole clear). The provider
+ * choices, language, temperature and the two ASR flags are deliberately NOT cleared.
+ * @param request - tool arguments including `action`.
+ * @returns the receipt.
+ */
+async function cloudClearReceipt(request) {
+  const patch = {
+    asr: { baseUrl: null, model: null, apiKey: null },
+    speaker: { baseUrl: null, model: null, apiKey: null },
+    llm: { baseUrl: null, model: null, apiKey: null },
+  }
+  const stated = []
+  if (request.consent !== undefined) {
+    patch.consent = request.consent
+    stated.push('consent')
+  }
+  if (request.mode !== undefined) {
+    patch.mode = request.mode
+    stated.push('mode')
+  }
+  const ignored = ['asr', 'speaker', 'llm'].filter((kind) => request[kind] !== undefined)
+  const outcome = await writeCloudSettings(patch)
+  if (outcome.ok !== true) {
+    const lines = [
+      `没有清空：${outcome.error}`,
+      '影响：整份配置未写入，三个服务的地址、模型与密钥都还在，识别与纪要行为不变。',
+      '修法：只清空时不要带非法值（consent 只能是 true/false，mode 只能是 local / prefer-cloud / cloud-only）；改正后重试。',
+      '',
+      ...cloudSummaryLines(await cloudSummary()),
+    ]
+    return cloudReply(lines.join('\n'))
+  }
+  const lines = [
+    '已清空：asr.baseUrl、asr.model、asr.apiKey、speaker.baseUrl、speaker.model、speaker.apiKey、llm.baseUrl、llm.model、llm.apiKey',
+    '保留：provider 选择、asr.language、keepRemote、stripSpeakerPrefix、llm.temperature，以及 consent/mode'
+      + (stated.length === 0 ? '（这次没有传 consent/mode，所以没有改）' : `（这次一并传了 ${stated.join('、')}，按参数写入）`),
+    '影响：三个服务都要重新填地址与密钥才能再联网；录音、本机转写与本地纪要不受影响，开着会也不会中断。',
+    '说明：clear 不动 cloud.asr.capability（上一次真实探测的缓存，只有 action=test 会写；换地址或模型后它会被下一次探测覆盖）。',
+  ]
+  if (ignored.length > 0) {
+    lines.push(`注意：clear 不接受 ${ignored.join('、')} 的字段，这些参数已忽略；要改它们用 action=set。`)
+  }
+  lines.push('', ...cloudSummaryLines(await cloudSummary()))
+  return cloudReply(lines.join('\n'))
+}
+
+/**
+ * Why a probe failed, and what to do about it.
+ *
+ * A receipt that only says "not available" leaves the person with nothing to try, so every
+ * failing kind ends with one concrete next step chosen from the verdict and the HTTP answer.
+ * @param kind - asr / llm / speaker.
+ * @param block - that kind's result from testCloud().
+ * @returns the fix sentence.
+ */
+function cloudTestFix(kind, block) {
+  const verdict = typeof block.verdict === 'string' ? block.verdict : ''
+  const reason = typeof block.reason === 'string' ? block.reason : ''
+  const reported = block.http === null || block.http === undefined ? 0 : Number(block.http.status) || 0
+  // The speaker probe has no `http` block of its own; its reason still names the status.
+  const status = reported !== 0 ? reported : Number(/HTTP\s+(\d{3})/u.exec(reason)?.[1] ?? 0)
+  if (verdict === '未启用') {
+    return '这次没有发出任何请求。若确实要上传：action=set 传 consent=true 并把 mode 设为 prefer-cloud 或 cloud-only，再 action=test；只用本机就保持现状，录音与纪要不受影响。'
+  }
+  if (verdict === '未配置') {
+    if (kind === 'speaker') {
+      return '声纹是可选项：不配置也能用本机声纹。要用云端声纹，provider 选 custom 并填 baseUrl（服务应能 POST {baseUrl}/speaker/embedding 并返回 {vector}）。'
+    }
+    const missing = reason.includes('密钥') ? 'apiKey'
+      : reason.includes('模型') ? 'model'
+        : reason.includes('服务地址') ? 'baseUrl'
+          : reason.includes('选择云端服务') ? 'provider（openai-compatible 或 custom）'
+            : 'provider、baseUrl、model、apiKey'
+    return `还缺配置：${reason}。用 action=set 补 ${missing} 后再 action=test；同样的字段也能在「模型中心」面板填。`
+  }
+  if (verdict === '需要降级') {
+    return '服务不接受 response_format=verbose_json，已自动用普通格式重试成功：能拿到全文，但没有分段与说话人。需要分段就换支持 verbose_json 的服务；不换也能用，只是云端分段与说话人不会出现。'
+  }
+  if (reason.includes('请求过于频繁')) {
+    return '被本机限流了（每分钟 60 次请求上限）：等一分钟再 action=test。'
+  }
+  if (reason.includes('超时')) return '请求超时（每次 20 秒）：检查网络与代理，稍后重试；开会期间可把 mode 设为 local，云端只是不用。'
+  if (status === 401 || status === 403) {
+    return '密钥无效或无权限：在「模型中心」重新填 apiKey；action=set 传新的 apiKey 会覆盖旧值（传空串表示保持不变），action=clear 清除密钥。'
+  }
+  if (status === 404) {
+    const endpoint = kind === 'asr' ? '插件会自己补 /audio/transcriptions' : kind === 'llm' ? '插件会自己补 /chat/completions' : '插件会拼 {baseUrl}/speaker/embedding'
+    return `地址或模型名不对：baseUrl 一般以 /v1 结尾，${endpoint}；核对后再 action=test。`
+  }
+  if (status === 400 || status === 422) {
+    const endpoint = kind === 'asr' ? '/audio/transcriptions' : kind === 'llm' ? '/chat/completions' : '/speaker/embedding'
+    return `服务端拒绝了请求内容：核对模型名是否在该服务可用、地址是否指向 OpenAI 兼容端点（${endpoint}），密钥是否有效；改完再 action=test。`
+  }
+  if (status === 429) return '被供应商限流了：等一分钟再 action=test；开会期间把 mode 设为 local，录音不受影响。'
+  if (status >= 500) return '供应商这一侧出错了：稍后重试；这段时间把 mode 设为 local 可正常开会，云端只是暂时不用。'
+  if (status === 0) return '请求没有到达服务端：检查网络、代理、防火墙与 baseUrl 的主机名，然后 action=test 复测。'
+  if (reason.includes('choices')) return '响应里没有 choices：地址可能不是 OpenAI 兼容的 chat completions 端点，核对 baseUrl 与模型名。'
+  if (reason.includes('不是 JSON')) return '收到了 2xx 但不是 JSON：地址大概指错了端点，核对 baseUrl（应指向服务根路径，不是具体接口）。'
+  return '按上面的原因原文修正后，再 action=test 复测；不确定当前配置时先 action=get。'
+}
+
+/**
+ * Render testCloud()'s three blocks as the model-facing receipt.
+ * @param results - `{ asr, llm, speaker }` from testCloud().
+ * @returns the lines.
+ */
+function cloudTestLines(results) {
+  const lines = ['云端连接测试（与「模型中心」的「测试连接」是同一个函数；测试前已清空回退状态）']
+  for (const kind of ['asr', 'llm', 'speaker']) {
+    const block = results[kind] !== null && typeof results[kind] === 'object' ? results[kind] : {}
+    const verdict = typeof block.verdict === 'string' && block.verdict !== '' ? block.verdict : '未知'
+    const ok = block.ok === true
+    lines.push('', `【${CLOUD_KIND_TEXT[kind]}】${verdict}${ok ? '：这次请求成功' : '：这次没有成功'}`)
+    if (kind === 'asr') {
+      const destination = block.destination !== null && typeof block.destination === 'object' ? block.destination : null
+      if (destination === null) {
+        lines.push('  音频去向：（未配置地址）')
+      } else {
+        lines.push(`  音频去向：${cloudShown(destination.host)}（远端留存：${destination.keepRemote === true ? '允许' : '不允许'}；探测音频 ${Number(destination.audioSeconds) || 0} 秒静音）`)
+      }
+    }
+    const http = block.http !== null && typeof block.http === 'object' ? block.http : null
+    // The speaker probe reports only a verdict and a reason (no separate HTTP block), and a
+    // gate-closed probe sends nothing at all; "no request was made" must not be claimed for
+    // a probe that did answer.
+    const httpText = http !== null
+      ? `${http.status}（${http.ms} ms）`
+      : verdict === '未配置' || verdict === '未启用' ? '未发出请求' : '（该探针不回报状态码）'
+    lines.push(`  HTTP：${httpText}`)
+    if (kind === 'asr') {
+      const capability = block.capability !== null && typeof block.capability === 'object' ? block.capability : null
+      lines.push(`  能力：${capability === null
+        ? '未测得（这次没有拿到可解析的回答）'
+        : `verbose_json=${capability.supportsVerboseJson === true ? '支持' : '不支持'}`
+          + `　分段=${capability.returnsSegments === true ? '有' : '无'}`
+          + `　说话人=${capability.returnsSpeaker === true ? '有' : '无'}`}`)
+      if (block.degraded === true) {
+        const attempts = Array.isArray(block.attempts)
+          ? block.attempts.map((item) => `${item.responseFormat}→${item.status}（${item.ms} ms）`).join('，')
+          : ''
+        lines.push(`  降级：是（已去掉 response_format 重试${attempts === '' ? '' : `：${attempts}`}）`)
+      }
+    }
+    if (kind === 'llm') lines.push(`  模型：${cloudShown(block.model)}`)
+    const message = typeof block.message === 'string' ? block.message : ''
+    const reason = typeof block.reason === 'string' ? block.reason : ''
+    if (message !== '') lines.push(`  结论：${message}`)
+    // On a failure the probe sets message and reason to the same sentence; print it once.
+    if (reason !== '' && reason !== message) lines.push(`  原因：${reason}`)
+    if (!ok) lines.push(`  修法：${cloudTestFix(kind, block)}`)
+  }
+  lines.push('', '说明：测试用已保存的配置；想先试新地址，先 action=set 再 action=test。ASR 测成功会把能力缓存写回（界面「能力」一行读的就是它），测试本身不改其他配置。')
+  return lines
+}
+
+/**
+ * The `test` receipt: clear the process-wide fallback, then run the panel's own test function.
+ * @returns the receipt.
+ */
+async function cloudTestReceipt() {
+  // The panel's button calls testCloud() as-is, and testCloud() resets the fallback before
+  // each probe. Resetting here first makes the tool start from the same clean state even
+  // when it is called right after a recording that tripped the fallback.
+  resetCloudFallback()
+  const results = await testCloud()
+  return cloudTestLines(results).join('\n')
+}
+
+/**
+ * Read, change, test or clear the cloud speech recognition, cloud speaker service and cloud
+ * minutes model from the conversation.
+ *
+ * Everything here goes through the functions the Model Center panel calls: `writeCloudSettings`
+ * for any write (one whitelist, one rejection message), `cloudSummary` for any read (one mask)
+ * and `testCloud` for any probe. That is what keeps the tool and the interface from ever
+ * disagreeing about what a field means. A receipt is Chinese because a person reads it, and a
+ * failure always says what it broke and how to fix it instead of only what went wrong.
+ * @param args - model arguments; validated here because a raw definition is not.
+ * @param exec - tool run context; unused, because the cloud settings belong to the installation
+ *   rather than to one meeting.
+ * @returns the readable receipt.
+ */
+export async function meetingCloud(args, exec) {
+  const request = args !== null && typeof args === 'object' && !Array.isArray(args) ? args : {}
+  const action = typeof request.action === 'string' ? request.action.trim().toLowerCase() : ''
+  if (!CLOUD_ACTIONS.includes(action)) {
+    return cloudReply(`未知的 action：${action === '' ? '（没有给 action）' : action}。可用 get（读配置）、set（写配置）、test（测连接）、clear（清空地址与密钥）。`)
+  }
+  try {
+    if (action === 'get') return cloudReply(cloudSummaryLines(await cloudSummary()).join('\n'))
+    if (action === 'set') return await cloudSetReceipt(request)
+    if (action === 'clear') return await cloudClearReceipt(request)
+    return cloudReply(await cloudTestReceipt())
+  } catch (failure) {
+    const message = redact(failure instanceof Error ? failure.message : String(failure))
+    if (action === 'test') {
+      return cloudReply(`云端连接测试没有完成：${message}\n影响：没有拿到可用性结论；录音、转写与纪要仍按当前已保存的配置运行，不受影响。\n修法：稍后重试；也可以在「模型中心」点「测试连接」交叉确认，并检查网络与 $DSH_HOME/meeting-room/webhooks.json 是否可读；仍失败请把 boot.log 与这句话一起反馈。`)
+    }
+    if (action === 'get') {
+      return cloudReply(`读取云端配置没有完成：${message}\n影响：这一次没有返回配置；识别与纪要仍按已保存的设置运行。\n修法：检查 $DSH_HOME/meeting-room/webhooks.json 是否可读（权限、被其它进程占用），然后重试。`)
+    }
+    return cloudReply(`云端配置没有写入完成：${message}\n影响：这次修改没有落地——webhooks.json 的 cloud 段可能仍是旧值，磁盘写入中途失败时文件也可能不完整。\n修法：先打开 $DSH_HOME/meeting-room/webhooks.json 确认 JSON 完整，检查磁盘空间与目录权限后重试；仍失败请把 boot.log 与这句话一起反馈。`)
+  }
 }
