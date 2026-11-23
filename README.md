@@ -47,7 +47,7 @@ DeepSeek Harness 的会议插件：**本机转写、发言人分离、要点与�
 ## 反馈
 
 分支版就是要挑毛病的：**发现任何问题、或想到任何改进意见，都请直接发邮件** ——
-杨道泉　[yangdaoquan@qq.com](mailto:yangdaoquan@qq.com?subject=dsh-meeting-studio%20%E5%8F%8D%E9%A6%88)
+Dokimel AI　[lion20231226@outlook.com](mailto:lion20231226@outlook.com?subject=dsh-meeting-studio%20%E5%8F%8D%E9%A6%88)
 
 信中麻烦附上：插件版本（面板「更多 → 关于」里可查）、DSH 版本、操作步骤、
 以及面板上显示的错误文字或 `$DSH_HOME/meeting-room/boot.log`。有截图更好。
@@ -615,17 +615,19 @@ dsh: warning: <包名> declares no dsh.bundle — installed as a plain dependenc
 
 ## 制作
 
-本插件由**博尔塔拉融媒体中心媒体传播与认知重点实验室**制作。
+本插件由 **Dokimel AI**（https://github.com/Dokimel-AI）制作与维护。
 
-- 制作人：杨道泉
-- 邮箱：yangdaoquan@qq.com
+- 联系：lion20231226@outlook.com
+- 仓库：https://github.com/Dokimel-AI/dsh-meeting-studio
+- 上游：dsh-meeting-room（MIT），原作者 博尔塔拉融媒体中心媒体传播与认知重点实验室 · 杨道泉
 
 ## 许可
 
 **MIT**，全文见 [LICENSE](LICENSE)：
 
 ```
-Copyright (c) 2026 博尔塔拉融媒体中心媒体传播与认知重点实验室（杨道泉）
+Copyright (c) 2026 Dokimel AI（https://github.com/Dokimel-AI）
+Copyright (c) 博尔塔拉融媒体中心媒体传播与认知重点实验室（杨道泉） —— 上游 dsh-meeting-room
 ```
 
 也就是说：可以自由使用、修改、再分发（含商用与机构内部部署），只需保留版权与许可声明；

@@ -442,7 +442,7 @@ const version = await call('/version')
 check('版本接口回插件自己的版本与作者', version.status === 200
   && typeof version.value.version === 'string' && version.value.version !== '0.0.0'
   && version.value.name === 'dsh-meeting-studio'
-  && String(version.value.author).includes('yangdaoquan@qq.com'))
+  && String(version.value.author).includes('lion20231226@outlook.com') && String(version.value.author).includes('Dokimel AI'))
 
 // ---------------------------------------------------------------------------
 // 7d. 模型注册表（M1）

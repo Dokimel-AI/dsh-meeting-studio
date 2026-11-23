@@ -1,9 +1,10 @@
 /**
  * Browser half of the meeting-room plugin.
  *
- * 本插件由博尔塔拉融媒体中心媒体传播与认知重点实验室制作。
- * 制作人：杨道泉　邮箱：yangdaoquan@qq.com
- * Copyright (c) 博尔塔拉融媒体中心媒体传播与认知重点实验室
+ * 本插件由 Dokimel AI（https://github.com/Dokimel-AI） 制作与维护。
+ * 联系：lion20231226@outlook.com
+ * 上游：dsh-meeting-room（MIT，© 博尔塔拉融媒体中心媒体传播与认知重点实验室 · 杨道泉）
+ * Copyright (c) 2026 Dokimel AI（https://github.com/Dokimel-AI）
  *
  * Loaded through the client module table, so it must be a lazy CommonJS factory and
  * may `require` only the shared platform modules.
@@ -50,8 +51,8 @@ window.__ModuleLoader__.load({
     const PREFIX = '/meeting-room'
 
     /** Who to write to about a problem or an idea; the About dialog offers the address. */
-    const ABOUT_EMAIL = 'yangdaoquan@qq.com'
-    const ABOUT_AUTHOR = '杨道泉'
+    const ABOUT_EMAIL = 'lion20231226@outlook.com'
+    const ABOUT_AUTHOR = 'Dokimel AI'
 
     /**
      * A meeting the management page asked the panel to show, handed over through this
@@ -207,10 +208,10 @@ registerProcessor('meeting-capture', MeetingCapture)
       hubImportHint: '选择之前导出的会议压缩包（.zip），把它导入本机',
       hubImported: '已导入会议',
       about: '关于',
-      aboutName: 'dsh-meeting-studio · 会议记录（DeepSeek Harness 插件）',
+      aboutName: 'dsh-meeting-studio · 会议记录（DeepSeek Harness 插件，Dokimel AI 维护）',
       aboutVersion: '版本',
       aboutAuthor: '作者',
-      aboutLab: '博尔塔拉融媒体中心媒体传播与认知重点实验室',
+      aboutLab: 'Dokimel AI',
       aboutLicense: '许可',
       aboutFeedback: '这是预览版，正需要你的意见：使用时发现 bug、觉得哪里别扭、或者有想加的功能，都请直接发邮件告诉我。信里附上版本号、DSH 版本、操作步骤与报错文字（有截图更好），我会跟着改。',
       aboutMail: '发邮件',
@@ -444,7 +445,7 @@ registerProcessor('meeting-capture', MeetingCapture)
       cloudStrictFailed: '云端识别失败（只用云端，未降级）',
       cloudProvider: '服务类型',
       cloudOff: '关闭',
-      cloudOpenAi: 'OpenAI 兼容（/audio/transcriptions）',
+      cloudOpenAi: 'OpenAI 兼容接口',
       cloudCustom: '自定义',
       cloudWhere: '音频将发往',
       cloudRetention: '声明不保留',
@@ -934,7 +935,7 @@ registerProcessor('meeting-capture', MeetingCapture)
       cloudStrictFailed: 'Cloud recognition failed (cloud only, no fallback)',
       cloudProvider: 'Service type',
       cloudOff: 'Off',
-      cloudOpenAi: 'OpenAI-compatible (/audio/transcriptions)',
+      cloudOpenAi: 'OpenAI-compatible endpoint',
       cloudCustom: 'Custom',
       cloudWhere: 'Audio would go to',
       cloudRetention: 'declared as not retained',
@@ -2347,7 +2348,7 @@ function periodBucketOf(startedAt, unit) {
      */
     const MC_LAMP = {
       ready: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-success-primary, #3fb950)' },
-      warn: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-warning-primary, #d29922)' },
+      warn: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-warn-primary, #d29922)' },
       bad: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-error-primary, #d9534f)' },
     }
     /** States a person can still fix by waiting or clicking "prepare". */
@@ -7572,7 +7573,7 @@ function periodBucketOf(startedAt, unit) {
           : `${t('mcHttpLabel')}：${String(http.status ?? '—')} · ${String(http.ms ?? '—')}ms`)
         const verdictBadge = (part) => h('span', {
           key: 'verdict',
-          style: { ...styles.chip, fontWeight: 600, color: mcVerdictColor(part) },
+          style: { ...styles.chip, fontWeight: 500, color: mcVerdictColor(part) },
         }, `${t('mcVerdict')}：${t(mcVerdictKey(part))}`)
         const reasonLine = (part) => {
           const reason = typeof part?.reason === 'string' && part.reason !== '' ? part.reason : ''

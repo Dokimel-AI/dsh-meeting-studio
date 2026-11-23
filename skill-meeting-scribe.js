@@ -7,9 +7,10 @@
  * of a SKILL.md) because the browser package ships no data directory; the Host registers
  * it into `ctx.skills` at activation.
  *
- * 本插件由博尔塔拉融媒体中心媒体传播与认知重点实验室制作。
- * 制作人：杨道泉 邮箱：yangdaoquan@qq.com
- * Copyright (c) 博尔塔拉融媒体中心媒体传播与认知重点实验室
+ * 本插件由 Dokimel AI（https://github.com/Dokimel-AI） 制作与维护。
+ * 联系：lion20231226@outlook.com
+ * 上游：dsh-meeting-room（MIT，© 博尔塔拉融媒体中心媒体传播与认知重点实验室 · 杨道泉）
+ * Copyright (c) 2026 Dokimel AI（https://github.com/Dokimel-AI）
  */
 
 /** The reminder prompt, written once so the skill and the reminder cannot drift apart. */
