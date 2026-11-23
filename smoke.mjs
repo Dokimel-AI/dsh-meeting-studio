@@ -9,6 +9,7 @@
 import { pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,13 +19,43 @@ const plugin = pathToFileURL(here).href
 const tmp = join(process.env.TEMP ?? '.', `meeting-room-smoke-${Date.now()}`)
 process.env.DSH_HOME = tmp
 await fs.mkdir(join(tmp, 'meetings'), { recursive: true })
-// The Excel export runs python; point it at the bundled runtime when one is present, so the
-// check exercises the real path instead of failing for a missing interpreter.
-if (process.env.DSH_PYTHON === undefined) {
-  const bundled = join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh', 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'python', 'python.exe')
-  if (await fs.access(bundled).then(() => true).catch(() => false)) process.env.DSH_PYTHON = bundled
+// The Excel export runs python, so this host check is honest only when the interpreter can do
+// what the export does: import python-docx/openpyxl AND write a file into the export directory.
+// Asking whether a path exists was not enough — a bundled runtime imports both packages and is
+// still refused when it writes under %TEMP% (债-19), which turned an environment limitation
+// into a red product failure. A candidate that cannot complete the write probe is skipped;
+// when no candidate can, the python-dependent checks are SKIPped rather than failed.
+const PYTHON_PROBE_DIRECTORY = join(tmp, 'meeting-room', 'exports')
+await fs.mkdir(PYTHON_PROBE_DIRECTORY, { recursive: true })
+const pythonScratch = join(PYTHON_PROBE_DIRECTORY, `.python-probe-${process.pid}.txt`)
+await fs.rm(pythonScratch, { force: true })
+// Same script shape as the capability self-check (host-capabilities.js), so both agree on what
+// "python works" means.
+const PYTHON_PROBE = [
+  'import sys',
+  'import docx, openpyxl',
+  "open(sys.argv[1], 'w', encoding='utf-8').write('ok')",
+].join('\n')
+const pythonCandidates = [
+  process.env.DSH_PYTHON ?? '',
+  join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.dsh', 'dsh-runtimes', 'dsh-primary-runtime', 'dependencies', 'python', 'python.exe'),
+  'python',
+  'python3',
+].filter((candidate) => candidate !== '')
+let pythonExecutable = ''
+for (const candidate of [...new Set(pythonCandidates)]) {
+  const run = spawnSync(candidate, ['-c', PYTHON_PROBE, pythonScratch], { timeout: 15_000, windowsHide: true, encoding: 'utf8' })
+  if (run.error !== undefined || run.status !== 0) continue
+  const wrote = await fs.readFile(pythonScratch, 'utf8').then((text) => text.trim() === 'ok').catch(() => false)
+  if (!wrote) continue
+  pythonExecutable = candidate
+  break
 }
-const hasPython = process.env.DSH_PYTHON !== undefined || process.env.PATH?.includes('python') === true
+await fs.rm(pythonScratch, { force: true }).catch(() => undefined)
+// The plugin reads DSH_PYTHON itself, so a probe that passed here is also the interpreter the
+// export and the capability row will use.
+if (pythonExecutable !== '') process.env.DSH_PYTHON = pythonExecutable
+const hasPython = pythonExecutable !== ''
 
 const constants = await import(`${plugin}/host-constants.js`)
 const { meetings } = constants
@@ -342,8 +373,15 @@ check('未知会议推送返回 404', (await call('/push', { meetingId: 'nope' }
 // ---------------------------------------------------------------------------
 const md = await call('/minutes', { meetingId: 'm-brief', format: 'md' }, 'POST')
 check('生成 Markdown 纪要并写明会议名称与类型', md.status === 200 && typeof md.value.content === 'string' && md.value.content.includes('晨会 · 排期') && md.value.content.includes('类型：晨会'))
-const docx = await call('/minutes', { meetingId: 'm-brief', format: 'docx' }, 'POST')
-check('生成 Word 纪要', docx.status === 200 && String(docx.value.name).endsWith('.docx'))
+// Same rule as the Excel export: the Word document is rendered by python, so a machine without a
+// usable interpreter is an environment limitation, not a product failure (债-19). The write probe
+// above already decided whether an interpreter can do what the renderer does.
+if (!hasPython) {
+  console.log('SKIP  生成 Word 纪要（本机没有可用的 python 解释器）')
+} else {
+  const docx = await call('/minutes', { meetingId: 'm-brief', format: 'docx' }, 'POST')
+  check('生成 Word 纪要', docx.status === 200 && String(docx.value.name).endsWith('.docx'))
+}
 const download = await call('/download?name=' + encodeURIComponent(md.value.name))
 check('下载接口以附件返回', download.status === 200 && String(download.headers['Content-Disposition'] ?? '').startsWith('attachment;'))
 check('下载的中文名走 UTF-8 文件名', String(download.headers['Content-Disposition'] ?? '').includes('filename*=UTF-8'))
@@ -543,6 +581,222 @@ check('会议工程包里搜不到密钥', !packedBytes.includes(CLOUD_KEY))
 providers.resetCloudFallback()
 await call('/cloud', { consent: false, mode: 'local', asr: { provider: 'off', baseUrl: '', model: '', apiKey: '' } }, 'POST')
 await new Promise((resolve) => cloudServer.close(resolve))
+
+// ---------------------------------------------------------------------------
+// 7e-2. 能力协商、密钥脱敏、speaker 保留与共享校验（R2–R5 的收尾断言）
+// ---------------------------------------------------------------------------
+// 7e proved the privacy switch on the recognition path. What follows is the same promises on
+// the paths a person reaches from the Model Center: the «测试连接» probe, the one degradation
+// retry, the capability cache it leaves behind, the speaker token the provider sends back, and
+// the fact that the tool and the panel reject one illegal patch with one sentence.
+const cloudActions = await import(`${plugin}/host-cloud-actions.js`)
+
+/** Start one throwaway HTTP server; a cloud stub has to be a real socket for guardedFetch. */
+async function listen(handler) {
+  const server = http.createServer(handler)
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return { server, port: server.address().port, base: `http://127.0.0.1:${server.address().port}/v1` }
+}
+
+/** Read a request body to the end, so the socket is not half-read when the stub answers. */
+function collectBody(req) {
+  return new Promise((resolve) => {
+    const chunks = []
+    req.on('data', (chunk) => chunks.push(chunk))
+    req.on('end', () => resolve(Buffer.concat(chunks)))
+  })
+}
+
+const stopServer = (server) => new Promise((resolve) => server.close(resolve))
+
+/** Write one cloud patch and insist it was accepted; a silent rejection would fake a pass. */
+async function saveCloud(patch) {
+  const answer = await call('/cloud', patch, 'POST')
+  if (answer.status !== 200) throw new Error(`/cloud 写入失败：${answer.status} ${JSON.stringify(answer.value)}`)
+  return answer.value
+}
+
+const readCloudFile = async () => JSON.parse(await fs.readFile(join(tmp, 'meeting-room', 'webhooks.json'), 'utf8'))
+
+// --- (a) 零请求：未同意 / mode=local 时，测试连接一处请求都不发 -----------------
+let gateHits = 0
+const gateStub = await listen(async (req, res) => {
+  gateHits += 1
+  await collectBody(req)
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ text: '网关可用', model: 'gateway-model' }))
+})
+await saveCloud({
+  consent: false,
+  mode: 'local',
+  asr: { provider: 'openai-compatible', baseUrl: gateStub.base, model: 'gateway-asr', apiKey: CLOUD_KEY },
+})
+const gateClosed = await cloudActions.probeCloudAsr()
+check('未同意上传时「测试连接」一处请求都不发', gateClosed.ok === false && gateClosed.verdict === '未启用' && gateHits === 0, `hits=${gateHits} verdict=${gateClosed.verdict}`)
+check('不发请求时照样摊开音频本来会发往哪个域名', gateClosed.destination?.host === `127.0.0.1:${gateStub.port}`, JSON.stringify(gateClosed.destination))
+await saveCloud({ consent: false, mode: 'prefer-cloud' })
+const gateUnconsented = await cloudActions.probeCloudAsr()
+check('选了云端优先但没同意时，也不发请求', gateUnconsented.verdict === '未启用' && gateHits === 0)
+await saveCloud({ consent: true, mode: 'local' })
+const gateModeLocal = await cloudActions.probeCloudAsr()
+check('识别方式选本地时，即使已同意也不发请求', gateModeLocal.verdict === '未启用' && gateHits === 0)
+await saveCloud({ consent: true, mode: 'prefer-cloud' })
+const gateOpen = await cloudActions.probeCloudAsr()
+check('同意且云端优先时「测试连接」才真的发一次请求', gateOpen.ok === true && gateHits === 1, `hits=${gateHits} ${gateOpen.message}`)
+
+// --- (b) 密钥不外泄：桩故意在 400 响应体里回显 Authorization -------------------
+let echoHits = 0
+const echoStub = await listen(async (req, res) => {
+  echoHits += 1
+  const auth = String(req.headers.authorization ?? '')
+  await collectBody(req)
+  res.writeHead(400, { 'Content-Type': 'application/json' })
+  // What a careless provider does: repeat the credential in its own error text. Only the
+  // redaction layer stands between that body and the receipt a person (or a model) reads.
+  res.end(JSON.stringify({ error: `invalid api key: ${auth}` }))
+})
+await saveCloud({ asr: { baseUrl: echoStub.base, model: 'gateway-asr' } })
+providers.resetCloudFallback()
+const echoTest = await call('/cloud/test', {}, 'POST')
+const echoTestText = JSON.stringify(echoTest.value)
+check('「测试连接」结果里没有密钥原文', echoTest.status === 200 && !echoTestText.includes(CLOUD_KEY), echoTestText.slice(0, 200))
+check('桩确实回显了密钥，但结果里只看到 sk-***', echoHits >= 1 && echoTestText.includes('sk-***'))
+const toolGet = await tools.meetingCloud({ action: 'get' }, {})
+const toolSet = await tools.meetingCloud({ action: 'set', asr: { model: 'gateway-asr' } }, {})
+const toolTest = await tools.meetingCloud({ action: 'test' }, {})
+check('meeting_cloud get 回执里没有密钥原文', typeof toolGet === 'string' && !toolGet.includes(CLOUD_KEY))
+check('meeting_cloud set 回执里没有密钥原文', typeof toolSet === 'string' && !toolSet.includes(CLOUD_KEY))
+check('meeting_cloud test 回执里没有密钥原文，且脱敏为 sk-***', typeof toolTest === 'string' && !toolTest.includes(CLOUD_KEY) && toolTest.includes('sk-***'))
+check('三份工具回执拼起来也搜不到密钥', !`${toolGet}\n${toolSet}\n${toolTest}`.includes(CLOUD_KEY))
+const bootLog = await fs.readFile(join(tmp, 'meeting-room', 'boot.log'), 'utf8').catch(() => '')
+check('boot.log 里也没有密钥原文', !bootLog.includes(CLOUD_KEY))
+
+// --- (c) 降级重试：第一次 400（body 提到 response_format），第二次 200 ----------
+let degradeHits = 0
+const degradeBodies = []
+const degradeStub = await listen(async (req, res) => {
+  degradeHits += 1
+  const body = (await collectBody(req)).toString('utf8')
+  degradeBodies.push(body)
+  if (degradeHits === 1) {
+    res.writeHead(400, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ error: 'response_format=verbose_json is not supported by this model' }))
+    return
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ text: '降级后的文本', model: 'degrade-model', segments: [{ start: 0, end: 1, text: '降级后的文本', speaker: '1' }] }))
+})
+await providers.saveAsrCapability(null)
+await saveCloud({ consent: true, mode: 'prefer-cloud', asr: { provider: 'openai-compatible', baseUrl: degradeStub.base, model: 'degrade-model', apiKey: CLOUD_KEY, stripSpeakerPrefix: true } })
+providers.resetCloudFallback()
+const degradedProbe = await cloudActions.probeCloudAsr()
+check('服务端拒绝 response_format 时自动去掉该字段重试成功', degradedProbe.ok === true && degradedProbe.degraded === true && degradedProbe.verdict === '需要降级', JSON.stringify(degradedProbe.attempts))
+check('第一次请求带的是 response_format=verbose_json', degradeBodies[0]?.includes('response_format') === true && degradeBodies[0].includes('verbose_json'))
+check('重试请求体里不再有 response_format', degradeBodies.length === 2 && !degradeBodies[1].includes('response_format'))
+check('整个降级只花了两次请求，两次都记在 attempts 里', degradeHits === 2 && degradedProbe.attempts.length === 2
+  && degradedProbe.attempts[0].responseFormat === 'verbose_json' && degradedProbe.attempts[1].responseFormat === 'none')
+
+// --- (d) capability 缓存：探测结果落盘，下一次识别的首请求就按它发 -------------
+const cachedSettings = await readCloudFile()
+check('探测结果写进 webhooks.json 的 cloud.asr.capability', cachedSettings.cloud?.asr?.capability?.supportsVerboseJson === false,
+  JSON.stringify(cachedSettings.cloud?.asr?.capability))
+const hitsBeforeCached = degradeHits
+const cachedAnswer = await providers.cloudTranscribe({ pcm: cuePcm, sampleRate: 16_000 })
+check('下一次识别首请求就不带 response_format（只用一次请求）', degradeHits - hitsBeforeCached === 1
+  && !degradeBodies[degradeBodies.length - 1].includes('response_format'), `hits=${degradeHits - hitsBeforeCached}`)
+check('缓存生效后返回结果正常且不再标记降级', cachedAnswer.skipped === false && cachedAnswer.degraded === false && cachedAnswer.text === '降级后的文本')
+
+// --- (e) speaker 保留与清洗：云端 token → S1/S2，原文与本地结果都不丢 ----------
+let speakerHits = 0
+const speakerStub = await listen(async (req, res) => {
+  speakerHits += 1
+  await collectBody(req)
+  const answers = [
+    { text: '1: 你好', segments: [{ start: 0, end: 1, text: '1: 你好', speaker: '1' }] },
+    { text: '2: 第二句。', segments: [{ start: 0, end: 1, text: '2: 第二句。', speaker: '2' }] },
+    { text: '1: 第三句。', segments: [{ start: 0, end: 1, text: '1: 第三句。', speaker: '1' }] },
+    { text: '1: 你好', segments: [{ start: 0, end: 1, text: '1: 你好', speaker: '1' }] },
+  ]
+  const answer = answers[Math.min(speakerHits - 1, answers.length - 1)]
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify({ ...answer, model: 'speaker-cloud-model' }))
+})
+await saveCloud({ asr: { provider: 'openai-compatible', baseUrl: speakerStub.base, model: 'speaker-cloud-model', apiKey: CLOUD_KEY, stripSpeakerPrefix: true } })
+// A speech provider that yields one local line per cue: the recording chain is what has to keep
+// the local text beside the cloud answer, so the route is exercised end to end, not just the
+// provider function the section above already covered.
+const speechCtx = {
+  logger: ctx.logger,
+  get: (name) => (name === 'speechToText'
+    ? { resolve: () => ({ audio: 'stub' }), transcribe: async () => ({ text: '本机听到的' }) }
+    : undefined),
+}
+const speechHandler = createHandler(speechCtx)
+// The same cue with the cloud switched off gives the local label the cloud answer must not
+// overwrite — today that label is empty (no speaker model here), but the check is about which
+// side wins, not about which value happens to be available.
+await saveCloud({ mode: 'local' })
+const localBaselineMeeting = seed('m-cloud-local', { sessionId: 'session-cloud-local' })
+await call('/chunk', { meetingId: 'm-cloud-local', pcm: cuePcm.toString('base64') }, 'POST', speechHandler)
+const localBaselineLabel = localBaselineMeeting.segments[0]?.speaker
+await saveCloud({ mode: 'prefer-cloud' })
+const speakerMeeting = seed('m-cloud-speaker', { sessionId: 'session-cloud-speaker' })
+const chunkOne = await call('/chunk', { meetingId: 'm-cloud-speaker', pcm: cuePcm.toString('base64') }, 'POST', speechHandler)
+speakerMeeting.seconds = 5
+await call('/chunk', { meetingId: 'm-cloud-speaker', pcm: cuePcm.toString('base64') }, 'POST', speechHandler)
+speakerMeeting.seconds = 10
+await call('/chunk', { meetingId: 'm-cloud-speaker', pcm: cuePcm.toString('base64') }, 'POST', speechHandler)
+const firstCue = speakerMeeting.segments[0]
+check('云端原文逐字留在 cloudText（「1: 你好」不丢）', firstCue?.cloudText === '1: 你好', JSON.stringify(firstCue))
+check('写进 text 的是洗掉说话人前缀后的「你好」', firstCue?.text === '你好')
+check('云端 token 按出现顺序归一成 S1', firstCue?.cloudSpeaker === 'S1')
+check('本机识别结果仍留在 localText（云端不覆盖本机文字）', firstCue?.localText === '本机听到的')
+check('本地 speaker 标签不被云端结果改写（与关云时的基线一致）', firstCue?.speaker === localBaselineLabel, `cloud=${firstCue?.speaker} local=${localBaselineLabel}`)
+check('/chunk 响应把云端结论一起交给面板', chunkOne.value.cloud?.used === true
+  && chunkOne.value.cloud.model === 'speaker-cloud-model' && chunkOne.value.segments[0]?.cloudSpeaker === 'S1')
+check('同一场会议里第二个云端说话人归一成 S2', speakerMeeting.segments[1]?.cloudSpeaker === 'S2', JSON.stringify(speakerMeeting.segments[1]))
+check('同一个 token 再出现时还是同一个标签', speakerMeeting.segments[2]?.cloudSpeaker === 'S1')
+await saveCloud({ asr: { stripSpeakerPrefix: false } })
+const rawMeeting = seed('m-cloud-raw', { sessionId: 'session-cloud-raw' })
+await call('/chunk', { meetingId: 'm-cloud-raw', pcm: cuePcm.toString('base64') }, 'POST', speechHandler)
+check('关掉前缀清洗后 text 保留原文，cloudText 与之一致', rawMeeting.segments[0]?.text === '1: 你好' && rawMeeting.segments[0]?.cloudText === '1: 你好')
+await saveCloud({ asr: { stripSpeakerPrefix: true } })
+
+// --- (f) 工具与界面同一份校验：同一个非法 patch 两边同一句话 --------------------
+const cloudBeforeInvalid = JSON.stringify((await readCloudFile()).cloud)
+const invalidViaRoute = await call('/cloud', { asr: { noise: 1 } }, 'POST')
+const invalidViaTool = await tools.meetingCloud({ action: 'set', asr: { noise: 1 } }, {})
+const cloudAfterInvalid = JSON.stringify((await readCloudFile()).cloud)
+check('两条路径用同一句话拒绝同一个非法字段', invalidViaRoute.status === 400
+  && typeof invalidViaRoute.value.error === 'string'
+  && String(invalidViaTool).includes(invalidViaRoute.value.error), `${invalidViaRoute.value.error} | ${String(invalidViaTool).slice(0, 160)}`)
+check('两条路径都点出被拒字段是 asr.noise', String(invalidViaRoute.value.rejected ?? '').includes('asr.noise')
+  && String(invalidViaTool).includes('asr.noise'))
+check('被拒之后 webhooks.json 的 cloud 段一字未改', cloudBeforeInvalid === cloudAfterInvalid)
+
+// --- (g) 自检：报告文件可回读、不可用项都写修法、报告里不落密钥 -----------------
+const capabilitiesModule = await import(`${plugin}/host-capabilities.js`)
+const earlySelfCheck = await capabilitiesModule.refreshReport(ctx)
+const reportText = await fs.readFile(join(tmp, 'meeting-room', 'capabilities.json'), 'utf8')
+const reportOnDisk = JSON.parse(reportText)
+check('capabilities.json 在磁盘上可回读且五路齐全', earlySelfCheck.saved === true
+  && ['asr', 'speaker', 'handwriting', 'cloud', 'python'].every((id) => typeof reportOnDisk.checks?.[id]?.ok === 'boolean'))
+check('自检报告里没有密钥原文（云端只报 keySet）', !reportText.includes(CLOUD_KEY) && !/sk-[A-Za-z0-9_-]{6,}/u.test(reportText))
+check('自检把不可用的项都落到一句修法上，而不是只报红', Object.values(reportOnDisk.checks).filter((row) => row.ok !== true).every((row) => typeof row.fix === 'string' && row.fix !== ''))
+
+// Clean up: cloud off, keys gone, capability cache dropped, every stub closed.
+await providers.saveAsrCapability(null)
+providers.resetCloudFallback()
+const cleanedCloud = await saveCloud({
+  consent: false,
+  mode: 'local',
+  asr: { provider: 'off', baseUrl: null, model: null, language: '', apiKey: null, keepRemote: false, stripSpeakerPrefix: true },
+  speaker: { provider: 'off', baseUrl: null, model: null, apiKey: null },
+  llm: { provider: 'off', baseUrl: null, model: null, apiKey: null },
+})
+check('收尾把云端配置清干净（同意关闭、方式本地、密钥未设置）', cleanedCloud.consent === false
+  && cleanedCloud.mode === 'local' && cleanedCloud.asr.keySet === false && cleanedCloud.asr.provider === 'off')
+await Promise.all([gateStub, echoStub, degradeStub, speakerStub].map((stub) => stopServer(stub.server)))
 
 // ---------------------------------------------------------------------------
 // 7f. 「开始记录」第一次点击就要有效

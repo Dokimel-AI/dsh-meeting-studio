@@ -1,9 +1,10 @@
 # 系统化测试清单（发布预览版前）
 
-面向 `dsh-meeting-room` 的发布前验证。分两部分：
+面向 `dsh-meeting-studio` 的发布前验证。分三部分：
 
 - **一、自动化冒烟**：`node smoke.mjs`，覆盖宿主侧的接口与工具逻辑（不需要麦克风、不需要模型）。
-- **二、手动功能清单**：覆盖必须用眼睛和耳朵确认的部分（录音、识别、界面交互、下载）。
+- **二、安装/卸载自检脚本**：`tools/install-check.mjs`、`tools/uninstall.mjs`（打包安装后的验收）。
+- **三、手动功能清单**：覆盖必须用眼睛和耳朵确认的部分（录音、识别、界面交互、下载）。
 
 > 测试环境建议：Windows + DSH 桌面版；先完整退出 DSH 再启动（宿主代码只在启动时加载），
 > 然后刷新 Web 页面（客户端代码随页面加载）。
@@ -15,7 +16,17 @@
 ```powershell
 # 用 DSH 自带 node 运行（任何 node ≥ 20 都可以）
 & "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe" smoke.mjs
+
+# 想把 Excel 导出也一起测到，指定一个装了 python-docx/openpyxl 的解释器
+$env:DSH_PYTHON='C:\Python314\python.exe'; node smoke.mjs
 ```
+
+当前基线：**266 项全绿**（`266/266 passed`，退出码 0）。
+
+**python 相关检查是「写探测」而不是查路径**：脚本会挑一个能 `import docx, openpyxl` **且能往导出
+目录写进文件**的解释器（依次尝试 `DSH_PYTHON` → DSH 捆绑运行时 → `python` → `python3`）。
+都不可写时，Excel 那几项打印 `SKIP` 而不是 `FAIL`——「能 import 却写不进 %TEMP%」是环境限制，
+不是产品缺陷（债-19）。同理，能力自检的 Python 一行也按「能不能写」判定。
 
 脚本在临时目录里造会议数据、直接调用路由处理器与工具函数，覆盖：
 
@@ -30,18 +41,58 @@
 | 会议工程包 | `/package` 的附件头与 zip 结构、清单格式与版本、导入得到新会议且不挂会话、内容与发言人标签保留、来源可追溯、空体与非法包被拒 |
 | 模型注册表 | `/models` 的内置目录与启用状态、未装/未知模型不能启用、内置不可删、DSH 模型不可导入、自定义条目出现、**sha256 不符的导入被拒**、按 sha256 导入成功、启用后 active 与"实际取用的模型"一致、在用不能删、删除清掉文件、坏条目被报出 |
 | 云端识别与隐私 | **未同意上传时零请求**（本机测试服务器计数）、同意后回文本与模型、密钥只作 Bearer 发送、`/cloud` 不回显密钥且摊开域名、限流与超时字段、失败消息脱敏为 `sk-***`、连续三次失败进入回退、**回退后不再发请求**、会议工程包里搜不到密钥 |
+| **云端能力协商（R3，新增）** | **未同意 / 识别方式=本地时「测试连接」也是零请求**（本机桩计数）、零请求时仍摊开「音频本来会发往哪个域名」、同意且云端优先时才真发一次、**400 后自动去掉 `response_format` 重试一次**（首次带 `verbose_json`、重试体不含该字段、`attempts` 记录两次、`degraded:true`、请求数=2）、**capability 缓存写进 `webhooks.json`**、缓存后下一次识别**首请求就带对的形态**（请求数=1、不再标记降级） |
+| **云端 speaker 保留（R4，新增）** | 原文逐字留在 `cloudText`（`1: 你好` 不丢）、`text` 只留清洗后的「你好」、云端 token 归一成 `S1`/`S2`、同一 token 复用同一标签、本机识别留在 `localText`、**本地 `speaker` 不被云端改写**、`/chunk` 响应把云端结论交给面板、**关掉 `stripSpeakerPrefix` 后原文保留** |
+| **密钥不外泄 + 共享校验（R2/R5，新增）** | 桩在 400 体里**回显 Authorization** → `/cloud/test` 结果只出现 `sk-***` 且无密钥原文；`meeting_cloud` 的 `get`/`set`/`test` 三份回执拼起来都搜不到密钥、`test` 回执有脱敏标记；`boot.log` 无密钥；**同一个非法 patch `{asr:{noise:1}}` 经 `POST /cloud` 与 `meeting_cloud set` 两路得到同一句错误**，且 `webhooks.json` 的 `cloud` 段一字未改 |
+| **能力自检（R6/g，新增）** | `capabilities.json` 在磁盘上可回读且五路齐全、报告里不含密钥原文、**不可用的项都写了一句修法**（不是只报红）；自检五项、落盘回读、asr 如实报缺失、python 写探测、探测不留临时文件、修复动作白名单 |
 | 实录书写（M4） | 中文数字与阿拉伯数字互转、日期/时间/百分比/金额/数量的规整、**不碰人名与版本号**、关掉规则一字不动、`/transcript` 默认值与可写入、参数越界夹取、最短大于最长自动对齐、未知规则被丢弃、**浏览器半边切句参数来自设置**、规整结果与原识别并存 |
 | 发言人识别（M3） | 阈值三档预设与默认值、**默认补标为全量**（含关掉后按上限）、阈值写入与越界夹取、命名才学进声纹库、库接口**只回姓名不回向量**、相近声音给出建议、**建议不自动写入姓名**、差得远不猜、删除/清空、`/state` 带建议、**记录与工程包不含 embedding 与质心** |
 | 历史列表 | 倒序、命中过滤（名称/类型/实录/要点/任务/日期）、`limit`+`offset` 分页与 `total` |
 | 遗留结转 | 取前一日复盘中未完成或标注「遗留」的任务 |
 | 工具 | `meeting_read` / `meeting_write` / `meeting_note_write` / `meeting_revise` / `meeting_save_document` / `meeting_distill` 的返回值与副作用 |
 | 持久化 | 5 秒落盘、空会议不落盘、重启后恢复、历史文件不被删除 |
+| 发布清单 | 遍历 `index.js` 等文件的相对引用，逐条核对是否被 `files` 覆盖；根目录每个 `.js` 都被覆盖（漏 `host-*.js` 的老问题不会再漏出去） |
 
 期望：全部 PASS，退出码 0。任何 FAIL 都会打印检查名与上下文。
 
 ---
 
-## 二、手动功能清单
+## 二、安装 / 卸载自检（R7）
+
+装插件是两件事（`dsh.profile.bundles` 决定加载、`dependencies` 决定解析），而 pnpm 11 还会因为
+profile 缺 `allowBuilds` 让 `add` 以 exit 1 结束却打出 `+ dsh-meeting-studio`。所以装完必须跑：
+
+```powershell
+# 1) 装完自检（默认 profile=desktop，也可以给名字或路径）
+node tools/install-check.mjs
+node tools/install-check.mjs --profile studio-x
+node tools/install-check.mjs --profile D:\path\to\profile
+
+# 2) 卸载（默认 dry-run；--apply 才真的执行）
+node tools/uninstall.mjs --profile studio-x
+node tools/uninstall.mjs --profile studio-x --apply
+```
+
+`install-check` 逐项核对并给出「修法」：
+
+| 检查项 | 通过条件 | 失败后果 |
+| --- | --- | --- |
+| profile 目录 / `package.json` | 可读、JSON 合法 | 无从判断，后面全部跳过 |
+| `dsh.profile.bundles` | 含 `dsh-meeting-studio` | 装了也不会加载 |
+| `dependencies` | 含 `dsh-meeting-studio` | bundles 里的名字找不到代码 |
+| `pnpm-workspace.yaml` 的 `allowBuilds` | `onnxruntime-node: true` | pnpm 11 下 `add` exit 1、bundles 不注册；只在 `package.json` 的 `pnpm.onlyBuiltDependencies` 里也不算 |
+| 安装副本的文件 | 发布清单里的 42 个文件都在、相对 import 都能落地 | 缺 `host-*.js` 时插件在加载期就失败 |
+| **`dsh.client.inject`** | 每个名字都在安装副本的客户端包清单里（优先 `@deepseek-ai/dsh-web-app` 的依赖；桌面版读 `app.asar` 头） | **整包客户端被注入门禁跳过**：插件显示已启用但界面完全不出现（实测：0.2.2-rc.5 壳里没有 `dsh-client-ui-primitives` / `dsh-client-ui-slots`） |
+| 依赖可解析 | 从安装副本 **realpath** 解析 `onnxruntime-node`、`pinyin-pro` | 手写/订正不可用；目录 link 安装必然失败（债-20） |
+| 可选依赖 | `sherpa-onnx-node` 可解析（缺失只 WARN） | 本地转写与声纹不可用，能力自检报红 |
+
+期望：`结果：通过（13 项 PASS，0 项提醒）`，退出码 0。卸载脚本在 `--apply` 后会**回读**
+`package.json` 核对两个清单是否真的清掉；没清掉就打印手工步骤。它**不删用户数据**
+（`$DSH_HOME/meeting-room`、`$DSH_HOME/meetings`、模型目录都保留）。
+
+---
+
+## 三、手动功能清单
 
 每条都可勾选；「期望」是判定标准。
 
@@ -250,19 +301,62 @@
 - [ ] 连续快速点「开始 / 停止」→ 期望：不会出现两条录音或丢段
 - [ ] 切换深浅色主题 → 期望：面板、对话框、下拉配色正常（全部走主题令牌）
 
+### V. 模型中心（R1–R5）
+
+- [ ] 左栏「会议管理」多出**「模型中心」**页签 → 期望：点开是四块卡片（能力自检 / 本地模型 /
+      云端语音识别 / 云端纪要 LLM），不是空白页
+- [ ] 能力自检一行一行看 → 期望：五行（asr / 声纹 / 手写 / 云端 / Python）各有一句人话结论；
+      红的写明原因与点哪里修；点「重新自检」会出现「正在自检…」并刷新
+- [ ] 刷新页面或重启 DSH 后再看能力自检 → 期望：读的是上次结果（`capabilities.json`），不会一直「还没自检过」
+- [ ] 云端语音识别卡片：**不勾同意**直接点「测试连接」→ 期望：按钮/提示说明「还要先勾同意，
+      测试会真发 1 秒静音」，且抓包看不到任何请求
+- [ ] 识别方式切「只用本地」、但已勾同意 → 期望：测试连接同样不发请求，并说明原因
+- [ ] 选一个预设（如硅基流动）→ 期望：地址被填入、候选模型名可下拉/可手填；没点保存前不影响已保存配置
+- [ ] 填一个不存在的地址 → 期望：结论「不可用」，HTTP 段显示状态码或「请求没到达」，并给一句修法
+- [ ] 用一个不支持 `verbose_json` 的模型 → 期望：结论「需要降级」、能力行 `verbose_json=不支持`、
+      「尝试」列出两次（verbose_json→400 / none→200）；**再次**测试/识别时不再带该字段
+- [ ] 换一个支持 verbose_json 与 speaker 的服务 → 期望：能力行三段都显示支持/有，测试结论「可用」
+- [ ] 开一场会、有云端 speaker 返回 → 期望：实录行出现云端说话人（S1/S2）次级标签，
+      文字里没有「1: 」前缀；关掉「去掉首说话人前缀」后新一句保留前缀
+- [ ] 云端纪要 LLM 卡片：填好地址/模型/密钥并保存 → 期望：「生成纪要」在配置可用时优先用云端模型，
+      失败时**保留本机纪要**并在面板说明原因，而不是把纪要弄丢
+- [ ] 对话里让 agent 调 `meeting_cloud {action:"get"}` → 期望：回执只有「密钥已设置」，没有密钥原文
+- [ ] 让 agent `{action:"set", asr:{noise:1}}` → 期望：明确拒绝并列出被拒字段，`webhooks.json` 未变
+- [ ] 让 agent `{action:"set", consent:true}` → 期望：**agent 先问用户**（这是隐私决定，不许自己改）
+- [ ] 旧「模型」页 → 期望：仍可看本地模型；云端一栏只显示当前值并提示「已迁移到模型中心」，
+      两个入口不会各改一份
+
+### W. 安装与卸载自检（R7）
+
+- [ ] 按 README 四步打包并 `add` → 期望：`+ dsh-meeting-studio` 且 **exit 0**
+- [ ] `node tools/install-check.mjs --profile <名字>` → 期望：`结果：通过`，退出码 0
+- [ ] 故意不写 `allowBuilds` 再装一遍 → 期望：`add` 以 exit 1 结束（`Ignored build scripts`），
+      `install-check` 同时报出「bundles 里没有」与「没有预置 allowBuilds」，并给出两段修法
+- [ ] 把 profile 的依赖改成目录 `link:` → 期望：`install-check` 报「目录 link 安装（债-20）」
+      与依赖解析失败，不会假装通过
+- [ ] 删掉安装副本里的一个 `host-*.js` → 期望：`install-check` 报缺失文件名（这条守卫对应历史上的坏包）
+- [ ] 把 `dsh.client.inject` 里塞一个壳里没有的名字（如 `@deepseek-ai/dsh-client-ui-primitives`）
+      重新打包安装 → 期望：`install-check` FAIL 并列出该名字；插件在界面上**不出现**（说明这条守卫是真需要的）
+- [ ] `node tools/uninstall.mjs --profile <名字>` → 期望：dry-run 只列将删项，不改文件
+- [ ] `--apply` 后再看 profile → 期望：`bundles` 与 `dependencies` 都不再有本插件；
+      用户数据（`$DSH_HOME/meeting-room`、录音、模型）都还在
+
 ---
 
-## 三、发布前回归顺序（建议）
+## 四、发布前回归顺序（建议）
 
-1. `node smoke.mjs` → 全绿；
-2. 手动清单 **A → B → C → D**（骨架功能）；
-3. **E → F → G**（会议内容主流程）；
-4. **H → I → J**（笔记、术语、评分）；
-5. **K → L → M**（跨会联动、历史、管理页）；
-6. **N → O → P → Q**（导出、工具、持久化、边界）；
-7. 记录所有未通过项与截图，作为预览版发布说明的「已知问题」。
+1. `node smoke.mjs` → 全绿（266/266）；
+2. `node tools/install-check.mjs --profile <名字>` → 全 PASS；
+3. 手动清单 **A → B → C → D**（骨架功能）；
+4. **E → F → G**（会议内容主流程）；
+5. **H → I → J**（笔记、术语、评分）；
+6. **K → L → M**（跨会联动、历史、管理页）；
+7. **N → O → P → Q**（导出、工具、持久化、边界）；
+8. **R → S → T → U → V**（模型、云端识别、发言人、实录书写、模型中心）；
+9. **W**（安装与卸载自检，用干净 profile 走一遍四步）；
+10. 记录所有未通过项与截图，作为预览版发布说明的「已知问题」。
 
-## 四、已知限制（发布说明可直接引用）
+## 五、已知限制（发布说明可直接引用）
 
 - 识别为**本机模型**：嘈杂环境、方言与专有名词仍可能出错，可用术语表与订正兜底；
 - 声纹分离在人数多、说话重叠时可能合并或串号，需人工命名与「重新识别发言人」；

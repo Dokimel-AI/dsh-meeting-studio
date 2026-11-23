@@ -1,77 +1,143 @@
-# dsh-meeting-room · 会议记录
+# dsh-meeting-studio · 会议记录
 
-**版本 0.1.0-preview.7**（预览版）
+**版本 0.1.0-fork.1**（`dsh-meeting-room` 0.1.0-preview.7 的分支维护版）
+
+> 本仓库是上游 `dsh-meeting-room`（MIT，原版权见 [LICENSE](LICENSE) 与 [NOTICE](NOTICE)）的分支：
+> 包名改为 `dsh-meeting-studio`，新增「模型中心」页签（能力自检、本地/云端模型、能力协商与降级、
+> 云端 speaker 保留、`meeting_cloud` 工具）。上游原有功能与数据格式保持不变，升级不会动已有会议。
 
 DeepSeek Harness 的会议插件：**本机转写、发言人分离、要点与工作安排、手写笔记、复盘与纪要**。
 
 音频不出本机；转写默认用随 DSH 安装的 SenseVoice，手写识别用随插件安装的本地小模型。
-模型可以在「会议管理 → 模型」里换（本地更强模型，或显式同意后的云端模型）。**不登录也能**写字、识别、建任务、出纪要。
+模型可以在「会议管理 → 模型中心」里换（本地更强模型，或显式同意后的云端模型）。**不登录也能**写字、识别、建任务、出纪要。
 
-## 本版新增（0.1.0-preview.7）
+## 本版新增（0.1.0-fork.1）
 
-- **开始录音＝按下「会议记录」按钮**：界面接管改由面板代码自己做——收起左侧工作区、打开右侧
-  「会议记录」卡片、宽度放到视口最大，然后才开麦。模型既不描述也不操作界面，平台把模型输出
-  拦掉（`Output data may contain inappropriate content.`）也不会影响开局；卡片没打开时由看守
-  （`/pending`）先接管再开录，不再出现「模型有时执行失败」。
-- **停止不再一按就结束**：第一次点只把按钮变成红色的「确认停止」，同时在下方提示「只想歇一下
-  请点暂停」；380ms 内的连点不算确认，四秒后自动解除，点「暂停」也立即解除。录音中「暂停」是
-  主按钮、「停止」只留灰描边——颜色先防错，确认只做兜底。
-- **停错了可以接着录**：收尾后主按钮变「继续记录」，音频追加在同一个 WAV 末尾、实录与要点都还在、
-  时间轴继续往下走；旁边另有「新建会议」，两个选择同时可见。宿主新增 `POST /resume`。
-- **收尾进度就在按钮下方**：点停止后多一行「正在收尾：等待最后几段识别完成…　剩余 N · 已等待 Ns」，
-  完成显示「收尾完成，会议已保存 · Ns」；右下角提示原样保留，不是搬家。
-- meeting-scribe 补一条：用户说「只是暂停」或「误点了停止」时不要收尾，让他用「继续记录」回来。
+- **「模型中心」页签**（会议管理 → 模型中心）：把「这台机器现在能做什么」「本地模型装到哪一步」
+  「云端怎么配」放进一页。四块卡片：能力自检 / 本地模型 / 云端语音识别 / 云端纪要 LLM。
+- **能力自检五行灯**：asr / 声纹 / 手写 / 云端 / Python，每行直接说「能不能用、为什么红、点哪修」，
+  结果落盘 `$DSH_HOME/meeting-room/capabilities.json`，重启后仍在。
+- **云端能力协商**：`测试连接` 真发一段 1 秒静音探出对方支不支持 `verbose_json`；被拒（400/422）就
+  自动去掉该字段重试一次，并把结论写进 `cloud.asr.capability` 缓存——之后第一请求就按对的形态发，不重复花钱。
+- **云端 speaker 保留**：服务端返回 `segments[].speaker` 时归一成 S1/S2 存进 `cloudSpeaker`（与本地标签并存，
+  本地优先）；句首的「1: 」「SPEAKER_00: 」前缀可按开关清洗，原文留在 `cloudText`。
+- **`meeting_cloud` 工具**：`get/set/test/clear`，与界面**同一份校验**、同一句错误、同一套脱敏。
+- **安装/卸载自检脚本**：`tools/install-check.mjs`、`tools/uninstall.mjs`（见下「安装」）。
 
-自动化冒烟 `node smoke.mjs`：**220 项全绿**（无需麦克风与模型，用临时数据目录）。
+自动化冒烟 `node smoke.mjs`：**266 项全绿**（无需麦克风与模型，用临时数据目录）。
 
 设计文档：
 - [DESIGN.md](DESIGN.md)——「会话 ↔ 会议」与「登录用户 ↔ 会话」的完整关系设计；
 - [FEATURES.md](FEATURES.md)——会议类型（晨会/复盘会/例会/总结会）、跨会提炼与月度评分的增量功能设计（含实现进度）；
-- [MODELS.md](MODELS.md)——语音与发言人识别增强、云端模型接口、可安装更强的本地模型
+- [MODELS.md](MODELS.md)——语音与发言人识别增强、云端模型接口与字段树、可安装更强的本地模型
   （进度表：**M1–M4 已完成**，重叠语音、热词注入、流式中间结果等条目按“受限/未做”如实标注）；
-- [TESTING.md](TESTING.md)——发布前系统化测试清单；
+- [TESTING.md](TESTING.md)——发布前系统化测试清单（含本轮新增断言与两个工具脚本的用法）；
 - [CHANGELOG.md](CHANGELOG.md)——发布线每个预览版修了什么（**装哪个版本先看它**）。
 
-> 分支约定：`master` 只放发布状态（发布由标签标记，如 `v0.1.0-preview.6`）；
-> 新功能在 `develop` 上做，稳定后再合回 `master` 并打新标签。
+> 分支约定：`master` 只放发布状态（发布由标签标记）；新功能在 `feat/*` 上做，稳定后再合回 `master` 并打新标签。
 
-> ⚠️ **开发本插件时，工作目录必须停在 `develop`。**
+> ⚠️ **开发本插件时，工作目录必须停在开发分支。**
 > profile 里的插件目录通常是指向本仓库的 **Junction/硬链接**（例如
-> `~/.dsh/profiles/<名字>/node_modules/dsh-meeting-room` → 本目录），
+> `~/.dsh/profiles/<名字>/node_modules/dsh-meeting-studio` → 本目录），
 > 因此**你切到哪个分支，DSH 加载的就是哪个分支的代码**：
-> 切到 `master`（只含发布修复）会让运行中的插件看起来"退回了发布版"（模型页签、云端设置都不见了），
-> 而**宿主半边每个进程只加载一次** —— 切回 `develop` 后还必须**完整重启 DSH** 才生效
+> 切到发布分支会让运行中的插件看起来“退回了旧版”（模型中心页签、云端设置都不见了），
+> 而**宿主半边每个进程只加载一次** —— 切回开发分支后还必须**完整重启 DSH** 才生效
 > （客户端半边刷新页面即可）。这个坑真实发生过，所以写在这里。
 
 ## 反馈
 
-预览版就是要挑毛病的：**发现任何问题、或想到任何改进意见，都请直接发邮件** ——
-杨道泉　[yangdaoquan@qq.com](mailto:yangdaoquan@qq.com?subject=dsh-meeting-room%20%E5%8F%8D%E9%A6%88)
+分支版就是要挑毛病的：**发现任何问题、或想到任何改进意见，都请直接发邮件** ——
+杨道泉　[yangdaoquan@qq.com](mailto:yangdaoquan@qq.com?subject=dsh-meeting-studio%20%E5%8F%8D%E9%A6%88)
 
 信中麻烦附上：插件版本（面板「更多 → 关于」里可查）、DSH 版本、操作步骤、
 以及面板上显示的错误文字或 `$DSH_HOME/meeting-room/boot.log`。有截图更好。
+装/卸问题请一并附上 `node tools/install-check.mjs --profile <名字>` 的输出。
 
 ## 安装
 
-**推荐用 Harness 自己的安装入口**（Plugins 页，或 `install_bundle` / `dsh plugin add`），
-因为它会**一次把两件事都做对**：写进 profile 的 `dependencies`，**同时**把包名追加进
-`dsh.profile.bundles`。
+本 fork **没有发布到 npm**，安装走「预置 `allowBuilds` → 打包 → 装进 profile → 自检」四步。
+要求 **DSH ≥ 0.2.0**（`engines.dsh`，不满足会被拦住）与 **Node ≥ 20**。
 
-```sh
-dsh plugin --profile <你的profile名> add dsh-meeting-room
+### 第 1 步：预置 `allowBuilds`（不能跳）
+
+本插件的 `onnxruntime-node` 需要在安装时执行构建脚本。pnpm 11 已不再读 `package.json` 里的
+`pnpm.onlyBuiltDependencies`，改读 profile 的 `pnpm-workspace.yaml`；**没预置这段，`add` 会以
+exit 1 结束，而且 `dsh.profile.bundles` 不会被写入**——看起来装上了，其实插件不会加载。
+
+```yaml
+# <profile>/pnpm-workspace.yaml（文件不存在就新建；已存在就追加这一段，注意保持缩进）
+allowBuilds:
+  onnxruntime-node: true
 ```
 
-包已发布在 npm（`dsh-meeting-room`，国内自动走 npmmirror 镜像）。要求 **DSH ≥ 0.2.0**
-（`engines.dsh`，不满足会被拦住）与 **Node ≥ 20**。
-当前是预发布版，`latest` 与 `preview` 两个 tag 都指向它，所以上面这条按包名安装即可；
-以后要用预发布线则写 `dsh plugin add dsh-meeting-room@preview`。
+> 本包的 `package.json` 里仍保留 `"pnpm": { "onlyBuiltDependencies": ["onnxruntime-node"] }`，
+> 那是给 pnpm ≤ 10 的；pnpm 11 只认上面这份 `allowBuilds`。
+
+> **顺序不能反**：必须**先写 `allowBuilds` 再 `add`**。先 add、看到失败后再去 `pnpm approve-builds`
+> 补批准，只会得到一行 `Already up to date`，`bundles` 仍然不注册（实测过）。这种情况下先删掉
+> `node_modules/dsh-meeting-studio` 与 `dependencies` 里那一条，补好 `allowBuilds` 后重新 add。
+
+> **做 Web 端验证时还有一条**：如果这个 profile 依赖 `@deepseek-ai/dsh-web-app`（在浏览器里跑 DSH），
+> 它带的 `koffi` 也有构建脚本，需要一起放行，否则 `add` 直接 exit 1：
+> ```yaml
+> allowBuilds:
+>   koffi: true
+>   onnxruntime-node: true
+> ```
+
+### 第 2 步：打包
+
+```sh
+npm pack        # 在插件仓库根目录执行，产出 dsh-meeting-studio-0.1.0-fork.1.tgz
+```
+
+发布清单（`package.json` 的 `files`）里包含 `host-*.js`、客户端、两个 worker、`locale/*.json`
+与 `tools/*.mjs`：少一个宿主模块，装出来的包会在加载期就失败。
+
+### 第 3 步：装进 profile
+
+```sh
+dsh plugin --profile <你的profile名> add <tgz 的绝对路径>
+```
+
+它会**一次把两件事都做对**：写进 profile 的 `dependencies`，**同时**把包名追加进
+`dsh.profile.bundles`。看到 `+ dsh-meeting-studio 0.1.0-fork.1` 且 **exit 0** 才算成功。
+
+> **`exit 1` 但出现 `+ dsh-meeting-studio` 不要慌，也不要急着重启试插件**：那说明依赖装进去了，
+> 但构建脚本被拦（日志里的 `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: onnxruntime-node@1.20.1`），
+> 此时 `bundles` 没写进去、插件不会被加载。回到第 1 步补齐 `allowBuilds`，再重跑这一步。
+
+### 第 4 步：自检
+
+```sh
+node <profile>/node_modules/dsh-meeting-studio/tools/install-check.mjs --profile <profile 名>
+# 也可以直接跑仓库里的这一份：
+node tools/install-check.mjs --profile <profile 名>
+```
+
+逐项核对：`dsh.profile.bundles` 有没有本插件、`allowBuilds` 预置了没有、发布清单里的文件是不是
+都装进来了（`host-*.js` 缺一个宿主半边就起不来）、`dsh.client.inject` 的每个名字这套 DSH 的 Web 壳
+认不认、`onnxruntime-node` / `pinyin-pro` / `sherpa-onnx-node` 能不能从**安装副本的 realpath**
+解析。每项 PASS/FAIL 都带下一步命令；有 FAIL 时退出码为 1，全部通过时退出码为 0。
+
+目标是看到 `结果：通过（13 项 PASS，0 项提醒）`。**装完必须重启 Harness**：宿主半边每个进程只加载一次。
+
+卸载：
+
+```sh
+node tools/uninstall.mjs --profile <profile 名>            # 默认 dry-run，只列将删项
+node tools/uninstall.mjs --profile <profile 名> --apply    # 真卸：调 dsh plugin remove，并回读核对
+```
+
+它只清 profile 里的两处清单（`bundles` 与 `dependencies`，`allowBuilds` 那行会提示你手工确认），
+**不动用户数据**（会议记录、录音、设置、模型都留在 `$DSH_HOME` 下，见「数据位置」）。
 
 ### 为什么是两件事（手工安装务必看）
 
 **插件是否被加载，取决于 profile `package.json` 里的 `dsh.profile.bundles`，不是 `dependencies`。**
 DSH 的插件管理器就是这么工作的（`@deepseek-ai/dsh-plugin-manager` 的 `reconcile()`）：
 它读取 `after.dsh?.profile?.bundles`，把新装的包**追加进去**；而且只有清单里声明了
-`dsh.bundle` 的包才算"profile 层"，否则 DSH 会打印一行警告：
+`dsh.bundle` 的包才算“profile 层”，否则 DSH 会打印一行警告：
 
 ```
 dsh: warning: <包名> declares no dsh.bundle — installed as a plain dependency, not a profile layer
@@ -82,73 +148,67 @@ dsh: warning: <包名> declares no dsh.bundle — installed as a plain dependenc
 ```jsonc
 // <profile>/package.json
 {
-  "dependencies": { "dsh-meeting-room": "0.1.0-preview.7" },
+  "dependencies": { "dsh-meeting-studio": "file:<tgz 路径>" },
   "dsh": {
     "profile": {
-      "bundles": ["dsh-meeting-room"]   // ← 这一项才决定它被加载
+      "bundles": ["dsh-meeting-studio"]   // ← 这一项才决定它被加载
     }
   }
 }
 ```
 
-### 装完自检（三件都过才算装好）
+### 目录 link 安装只用于开发（不会装传递依赖）
 
-```sh
-# 1) 名字在 bundles 里
-grep -n 'dsh-meeting-room' <profile>/package.json      # 应出现在 dsh.profile.bundles 中
-# 2) 这一层真的进了配置
-dsh --profile <你的profile名> --dump-config            # 应出现一层 "# == dsh-meeting-room"
-# 3) 宿主代码齐全（缺 host-*.js 就是装到了旧包）
-ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
-```
+把 profile 直接 `link:` 到本仓库（`dsh plugin add <本目录>` 或手工 junction）**不会安装本插件的
+传递依赖**：`onnxruntime-node`、`pinyin-pro`、`sherpa-onnx-node` 在 profile 里解析不到，手写与
+声纹会静默不可用（能力自检会如实报红）。这种装法只适合「改代码 + 立刻看效果」；
+要按真实安装验收，请走上面四步打包安装。`install-check` 会把这种装法标成
+「目录 link 安装：开发用，不会装传递依赖（债-20）」。
 
-**安装后需要重启 Harness**：宿主半边每个进程只加载一次。
-
-### 安装排错（先看这四条）
+### 安装排错（先看这七条）
 
 1. **装完必须重启 Harness**。宿主半边每个进程只加载一次，不重启就等于没装。
 
-2. **插件目录里只有几个 `.js` 文件** —— `...\node_modules\dsh-meeting-room\` 下只看到
+2. **`add` 以 exit 1 结束、日志里有 `Ignored build scripts: onnxruntime-node`** —— 回到第 1 步补
+   `allowBuilds`，然后重跑第 3 步。这种状态下依赖可能已经落盘，但 `bundles` 是空的，插件不会加载。
+
+3. **插件目录里只有几个 `.js` 文件** —— `...\node_modules\dsh-meeting-studio\` 下只看到
    `index.js`、`client.js` 与两个 worker 等少数文件，**却没有 `host-*.js`**，那么宿主半边会在
    加载期就失败（`index.js` 引用了这些兄弟模块），表现是插件整个起不来、也没有
-   `$DSH_HOME/meeting-room/boot.log`。
-
-   这是 **0.1.0-preview.1 那份包的缺陷**：发布清单（`package.json` 的 `files`）漏掉了多数
-   `host-*.js`，于是打出来的包里没有宿主代码。**已修复：请使用 `0.1.0-preview.2` 或更新的版本**
-   （`v0.1.0-preview.2` 标签）。本项目还为此加了发布清单守卫（`node smoke.mjs` 的前几项检查）：
-   它会遍历 `index.js` 等文件的相对引用，逐条核对是否被 `files` 覆盖 —— 同类问题不会再漏出去。
-
-   自检一行命令（在插件目录里）：
-   ```sh
-   ls node_modules/dsh-meeting-room/host-*.js   # 应当列出 11 个 host-*.js
-   ```
-
-3. **`sherpa-onnx-node` 的 peer 警告可以忽略**。profile 的 pnpm 通常
-   `autoInstallPeers: false`，所以它只被记录、不被安装；插件的转写走 DSH 自带的语音能力
-   （`ctx.get('speechToText')` 懒取），**缺它只影响转写，其余功能不受影响**。
-   想消除 WARN 可显式安装：
-   ```sh
-   pnpm add sherpa-onnx-node@1.13.8    # 在该 profile 目录里
-   ```
+   `$DSH_HOME/meeting-room/boot.log`。这是打包时发布清单漏文件的老问题（上游 0.1.0-preview.1 的缺陷），
+   本项目已加了两道守卫：`node smoke.mjs` 会遍历 `index.js` 等文件的相对引用逐条核对 `files`，
+   `tools/install-check.mjs` 会在安装后逐个文件比对安装副本。
 
 4. **插件装上了却完全不生效**（Plugins 页里没有它、面板按钮不出现、`dsh --dump-config` 里
    没有这一层）—— 最可能是**只装了依赖、没进 `bundles`**：`pnpm add` 只写 `dependencies`，
    而决定加载的是 `dsh.profile.bundles`（见上面「为什么是两件事」）。
    手工把包名加进 `dsh.profile.bundles` 后重启即可；用 DSH 自己的安装入口则不会踩到。
 
-5. **如果「开始记录」要点两次才录上**，说明装的还是旧包（宿主路由缺失时，面板曾把探测失败
-   当成"就绪"，于是第一次点击走了注定失败的直录路径）。**0.1.0-preview.3 已修**：
-   面板初始不再谎报就绪、404 不再冒充就绪、准备过程对终态与停滞都有明确出口，
-   并且会直接告诉你「宿主路由未注册……请更新到 0.1.0-preview.2 或更新版本」。
+5. **插件在「已安装插件」里显示已启用、名字描述都对，但界面完全不出现**（左栏没有「会议管理」、
+   会话头也没有「打开会议」，也没有任何报错）—— 这是 `package.json` 的 **`dsh.client.inject`
+   里有一个名字这套 DSH 的 Web 壳里没有**：注入门禁会因此**跳过整包客户端**。
+   实测例子：DSH 0.2.2-rc.5 的壳里没有 `@deepseek-ai/dsh-client-ui-primitives` 与
+   `@deepseek-ai/dsh-client-ui-slots`（上游部分版本有过），把这两个名字留在 inject 里就会得到这个症状。
+   `tools/install-check.mjs` 会把 inject 每一项与安装目录里的客户端包清单逐项比对，
+   缺一个就 FAIL 并列出名字；修法是从 `dsh.client.inject` 删掉这些名字后重新打包安装。
+
+6. **`sherpa-onnx-node`（声纹/语音后端）现在是 `optionalDependencies`**：随插件自动装，
+   **装不上也不阻塞安装**，只是声纹与本地转写用不了——能力自检的「声纹」一行会报红并给修法。
+   想手工补：在该 profile 目录 `pnpm add sherpa-onnx-node@1.13.8`。
+
+7. **如果「开始记录」要点两次才录上**，说明装的还是旧包（宿主路由缺失时，面板曾把探测失败
+   当成“就绪”，于是第一次点击走了注定失败的直录路径）。fork 版已修：
+   面板初始不再谎报就绪、404 不再冒充就绪、准备过程对终态与停滞都有明确出口。
 
 ## 前提
 
 | 依赖 | 说明 |
 | --- | --- |
-| **SenseVoice 语音识别** | 由 DSH 安装包提供（`sherpa-onnx-node` 声明为 peer 依赖，随安装解析；profile 若关闭 `autoInstallPeers`，缺它只影响转写，其余功能不受影响，见上面「安装排错」第 3 条） |
-| **`onnxruntime-node`** | 随本插件安装，用于手写识别。若安装时 pnpm 提示忽略其构建脚本，Windows x64 上属正常现象，模块仍可加载；其他平台如加载失败，请在该 profile 里 `pnpm approve-builds` 后重装 |
+| **SenseVoice 语音识别** | 由 DSH 安装包提供（DSH 的「语音输入」bundle）；插件通过 `ctx.get('speechToText')` 懒取，缺失时能力自检的 asr 一行会如实报缺失 |
+| **`sherpa-onnx-node`** | 本插件的 `optionalDependencies`：装插件时自动带上，用于本地转写与声纹后端；**装不上不阻塞安装**，只是这两项用不了——能力自检会报红并给修法（见上面「安装排错」第 6 条） |
+| **`onnxruntime-node`** | 随本插件安装（`dependencies`），用于手写识别。需要在 profile 的 `pnpm-workspace.yaml` 预置 `allowBuilds` 才能构建成功（见「安装」第 1 步） |
 | **`pinyin-pro`** | 随本插件安装，用于会议术语的同音订正 |
-| **Python + python-docx** | 仅「导出 Word」需要。优先使用 DSH 运行时自带的 Python；若不含 `python-docx`，在其中 `pip install python-docx`。没有 Python 时其余功能不受影响 |
+| **Python + python-docx** | 仅「导出 Word」需要。优先使用 DSH 运行时自带的 Python；若不含 `python-docx`，在其中 `pip install python-docx`。没有 Python 时其余功能不受影响；**注意「能 import 但写不进导出目录」也算不可用**——能力自检的 Python 一行是写探测，会说清是哪一种 |
 
 **模型在首次使用时联网下载**（不在包内），下载后校验大小与 sha256：
 
@@ -262,7 +322,92 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 
 「**更多 → 关于**」显示本机实际安装的**版本号**、作者与邮箱，并可直接发邮件反馈问题或建议。
 
+### 模型中心（会议管理 → 模型中心）
+
+「模型中心」把三件事放进一页：**这台机器现在能做什么**、**本地模型装到哪一步**、**云端怎么配**。
+四块卡片从上到下：
+
+| 卡片 | 管什么 |
+| --- | --- |
+| **能力自检** | 五行结论：本机语音识别 / 发言人声纹 / 手写识别 / 云端识别 / Word·Excel 导出（Python）。每行直接说「可用」还是「为什么不可用 + 怎么修」，可点「准备模型」下载、也可点「重新自检」重探。结果落盘 `$DSH_HOME/meeting-room/capabilities.json`，重启后仍在 |
+| **本地模型** | 按用途分组（语音识别 / 发言人声纹 / 手写识别）列出可装与已装，带大小与是否校验通过；可下载、从本地文件导入、启用、删除。录音不出本机 |
+| **云端语音识别** | 服务商预设、地址/模型/语言/密钥、**同意上传**开关、「识别方式」三选一、「测试连接」、能力探测结果、远端留存与失败回退的直白说明 |
+| **云端纪要 LLM** | OpenAI 兼容 `/chat/completions` 的地址/模型/密钥/温度；配好后「生成纪要」可改用它改写本机纪要，不配置时行为不变 |
+
+**识别方式**（云端语音识别卡片里）：
+
+| 方式 | 行为 |
+| --- | --- |
+| **只用本地模型**（默认） | 全程不进网络；即使地址、密钥都填好了也不发请求 |
+| **云端优先（失败降级本地）** | 每段先发云端；连续失败 3 次自动回到本地并说明原因 |
+| **只用云端（不降级）** | 只发云端；失败时保留本机文字并明确报错，**不会**悄悄用本机结果冒充云端结果 |
+
+下面一行「当前生效：…」显示的是**已保存**的选择（本地／云端／已回退本地），改了下拉框
+还没点保存时不会变——避免“以为已经切到云端”的错觉。
+
+#### 供应商预设
+
+预设只填**地址与候选模型名**，不含任何行为；点了不会发请求，也不会改别的字段。
+
+| 预设 | baseUrl | 语音识别模型（候选） | 纪要模型（候选） |
+| --- | --- | --- | --- |
+| 硅基流动 | `https://api.siliconflow.cn/v1` | `FunAudioLLM/SenseVoiceSmall`、`Qwen/Qwen3-ASR-1.7B`、`XingChenASR-V3.2-Ultra` | `Qwen/Qwen2.5-72B-Instruct` |
+| OpenAI | `https://api.openai.com/v1` | `whisper-1`、`gpt-4o-transcribe` | `gpt-4o-mini` |
+| Groq | `https://api.groq.com/openai/v1` | `whisper-large-v3` | `llama-3.3-70b-versatile` |
+| 自定义 | 自己填 | 自己填 | 自己填 |
+
+协议只有一条：**OpenAI 兼容**。语音识别是 `POST {baseUrl}/audio/transcriptions`（multipart），
+纪要是 `POST {baseUrl}/chat/completions`；地址一般以 `/v1` 结尾，插件自己补后面那一段。
+预设不保证当年可用，服务商改名/下线时按它的文档改 `baseUrl` 与 `model` 即可。
+
+#### 「测试连接」怎么读
+
+测试**真的发一次请求**：语音识别发一段 1 秒静音 WAV（不含任何说话内容），LLM 发一句「回复 ok 两个字」。
+所以两条前提：先**勾选同意上传**，并把「识别方式」切到云端——否则按钮会提示「不会发出任何请求」。
+测试用的是**已保存的设置**，改了字段要先保存再测。
+
+结果分三段读：
+
+1. **HTTP / 耗时**：`200（1180 ms）` 表示对方答了；`401`/`404` 之类按下面错误码表处置；`未发出请求` 表示被同意开关或本地模式挡住。
+2. **能力探测**：`verbose_json` / `分段` / `说话人` 三格。对方支持 `verbose_json` 才有分段与时间；
+   返回 `segments[].speaker` 才有说话人（归一到 S1/S2 后写进实录的 `cloudSpeaker`，与本地标签并存）。
+3. **结论**：`可用` / `需要降级` / `不可用`。
+   - `需要降级` 表示服务端拒绝了 `response_format=verbose_json`，插件**自动去掉该字段重试了一次**，
+     第二次成功：能拿到全文，但没有分段与说话人。「尝试」一行会列出两次尝试的形态与状态码。
+   - 探测结论会写进 `cloud.asr.capability`（`webhooks.json`），**下一次识别第一个请求就按对的形态发**，
+     不会每段都先撞一次 400；换地址/模型后由下一次探测覆盖。
+   - 探测失败不改任何识别行为，实录仍按已保存配置走。
+
+#### 常见错误码怎么处置
+
+| 现象 | 含义 | 怎么办 |
+| --- | --- | --- |
+| **401 / 403** | 密钥无效、过期或无该模型权限 | 重新填 `apiKey`（留空=保持不变；要清空用 `meeting_cloud {action:"clear"}`）；确认这个 key 在服务商侧有该模型权限 |
+| **404** | 地址或模型名不对 | `baseUrl` 一般以 `/v1` 结尾，插件自己补 `/audio/transcriptions` 或 `/chat/completions`；核对模型名是否在该服务可用 |
+| **413** | 这一段音频超过服务端上限 | 把「设置 → 实录与切句 → 最长一段」调小（如 5 秒），让单段更短；或换支持长音频的服务。插件不会为 413 自动重试 |
+| **429** | 被供应商限流 | 等一分钟再测；开会期间把「识别方式」切成「只用本地模型」，录音与转写不受影响。本机另有每分钟 60 次的自保上限 |
+| **400 且响应含 `response_format` / `verbose_json`** | 服务端不支持 `verbose_json` | 不用管：插件已自动去掉该字段重试一次，结论显示「需要降级」，并把结论缓存下来。想要分段与说话人就换一个支持 verbose_json 的服务 |
+| **422** | 参数不被接受（各家措辞不同） | 与上一条同样先走一次降级重试；仍失败时核对模型名、语言参数与该服务要求，按「原因」原文修改 |
+| **5xx** | 供应商自己出错 | 插件对 5xx 自动重试一次；仍失败就稍后再试，期间切「只用本地模型」保证开会不受影响 |
+| **超时（20 秒）/ 请求没到达** | 网络、代理、防火墙、域名解析 | 检查代理与 `baseUrl` 主机名；开会期间可先切本地 |
+| **2xx 但不是 JSON** | 地址指到了网页而不是接口 | 核对 `baseUrl` 应是服务根路径（不是具体接口页），协议是 OpenAI 兼容 |
+| **响应里没有 `choices`** | 不是 OpenAI 兼容的 chat completions | 换端点或换服务；该地址可能只支持语音识别 |
+
+连续失败 3 次后，「云端优先」会自动回退本地并在卡片上写明原因；**这不是静默降级**，
+而是明确告诉你「现在用的是本机结果」。想继续云端就点「测试连接」定位原因，成功后回退状态自动清除。
+
+> **给 agent 的一条规矩**：`meeting_cloud` 能改 `consent`（同意上传）与 `mode`（识别方式），
+> 但这两项等于替人做隐私决定——**改之前先问用户**，得到明确同意再写。
+> `action:"get"` 只是读配置，不用问；`action:"set"` 里的地址、模型、密钥也应当由用户提供，不要自己填。
+
+详细设计（接口契约、能力协商、speaker 字段、声纹接口）见 [MODELS.md](MODELS.md)；
+字段树、`cloud.asr.capability` 缓存与安装实测（`allowBuilds`、`dsh.client.inject`）见
+[MODELS.md §4.1 与 §10](MODELS.md)。
+
 ### 模型（会议管理 → 模型）
+
+> 「模型中心」是新入口：云端配置与能力自检都在那里；这一页保留，行为不变，
+> 云端一栏只**显示**当前值并提示「已迁移到模型中心」，避免两个入口改同一份配置。
 
 识别用哪个模型是**数据**，不是写死的：
 
@@ -274,18 +419,7 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 - 自己加模型：编辑 `$DSH_HOME/meeting-room/models.json`（kind／来源与镜像／文件名+大小+sha256／
   目录／语言／说明／许可），页签里会列出来；写坏了会在页面上明确报错，不会被静默忽略；
 - 会议记录会写下**这场用了哪个模型**，日后排查识别质量时有据可查；
-- 页面分两栏：**本地模型**（按用途分组：语音识别／发言人声纹／手写识别，录音不出本机）
-  和**云端模型**（OpenAI 兼容 `/audio/transcriptions`，默认关闭，勾选同意才发音频）；
-- 云端一栏顶部是**「识别方式」**，三选一：
-
-  | 方式 | 行为 |
-  | --- | --- |
-  | **只用本地模型**（默认） | 全程不进网络；即使地址、密钥都填好了也不发请求 |
-  | **云端优先（失败降级本地）** | 每段先发云端；连续失败 3 次自动回到本地并说明原因 |
-  | **只用云端（不降级）** | 只发云端；失败时保留本机文字并明确报错，**不会**悄悄用本机结果冒充云端结果 |
-
-  下面一行「当前生效：…」显示的是**已保存**的选择（本地／云端／已回退本地），改了下拉框
-  还没点保存时不会变——避免“以为已经切到云端”的错觉。
+- 云端语音识别、云端纪要 LLM 的配置、测试与能力探测都在「模型中心」一页里（见上一节）；
 - 详细设计（云端接口、识别增强、分批计划）见 [MODELS.md](MODELS.md)。
 
 ### 设置页的五个 tab
@@ -302,7 +436,7 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 
 每个 tab 各有自己的保存按钮，切 tab 不会丢掉未保存的输入。
 
-**模型（含云端识别）不在这里**，见上一节：所有“用哪个模型识别”的决定都在「会议管理 → 模型」
+**模型（含云端识别）不在这里**，见上一节：所有“用哪个模型识别”的决定都在「会议管理 → 模型中心」
 一页里，先本地、后云端，云端默认关闭。
 
 ### 实录怎么写（数字规整）与怎么切句
@@ -344,23 +478,26 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 
 ### 云端识别（默认关闭）
 
-「会议管理 → **模型**」页里的**云端模型**一栏是云端识别开关（和本地模型同一页，方便直接对比），
-顶部「识别方式」决定本地还是云端干活：默认**只用本地**；选**云端优先**则失败 3 次自动降级；
+「会议管理 → **模型中心**」页里的**云端语音识别**卡片是云端识别开关，
+「识别方式」决定本地还是云端干活：默认**只用本地**；选**云端优先**则失败 3 次自动降级；
 选**只用云端**则失败就报错、不降级。
 只有一条规矩：**没有你的明确同意，一个请求都不发**。
 
 - **不打开**：全部在本机识别，插件对外零请求（这条有自动化测试盯着）；
 - **打开**：只把**当前这一段音频**（不是整场录音）发到你填的地址，走 OpenAI 兼容的
   `/audio/transcriptions`（自建网关、各家云都能接），并在请求里声明**不保留**；
-- 设置页**摊开显示音频将发往哪个域名**，并有「测试连接」（发 0.1 秒静音，不传任何说话内容）；
-- **密钥**只存在本机设置里：界面只显示"已设置"、不回显原文，错误消息与日志里一律脱敏为 `sk-***`，
+- 卡片上**摊开显示音频将发往哪个域名**，并有「测试连接」（发 **1 秒**静音，不传任何说话内容）；
+- **密钥**只存在本机设置里：界面只显示“已设置”、不回显原文，错误消息与日志里一律脱敏为 `sk-***`，
   **会议工程包里也不会有密钥**（这三条都有测试断言）；
-- 每分钟 60 次上限、单次 20 秒超时，**连续失败 3 次自动回退本机识别**并在设置页与面板说明原因 ——
+- 每分钟 60 次上限、单次 20 秒超时，**连续失败 3 次自动回退本机识别**并在卡片与面板说明原因 ——
   不静默降级，也不反复重试；
+- 服务端返回 `segments[].speaker` 时，说话人被归一成 S1/S2 记进实录用「云端认为」的次级标签；
+  句首的「1: 」「SPEAKER_00: 」前缀可按开关清洗（原文留在 `cloudText`，本地结果不受影响）；
 - 术语表作为热词随音频一起发过去（名字与行话正是通用模型最容易错的）；
 - 识别结果会记下**用了哪个模型**（会议记录里的 `asrModel`）。
 
-详细设计（声纹云端接口、识别增强、分批计划）见 [MODELS.md](MODELS.md)。
+测试连接怎么读、9 种失败各怎么处置，见上面「模型中心」一节；详细设计（声纹云端接口、识别增强、
+分批计划）见 [MODELS.md](MODELS.md)。
 
 ### 识别不准时按这个顺序调
 
@@ -438,9 +575,15 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 | --- | --- |
 | `$DSH_HOME/meetings/` | 录音 WAV、导出的 SRT / Markdown / Word、手写笔记 PNG |
 | `$DSH_HOME/meeting-room/meetings/` | 会议结构化记录（要点、任务、笔记、订正、发言人姓名），重启后自动恢复 |
-| `$DSH_HOME/meeting-room/webhooks.json` | 机器人地址、企业内部应用凭据、人员名册 |
+| `$DSH_HOME/meeting-room/webhooks.json` | 机器人地址、企业内部应用凭据、人员名册，以及 `cloud` 段（同意项、识别方式、三个服务的地址/模型/**密钥**、`asr.capability` 能力缓存）——界面与日志永不回显密钥 |
+| `$DSH_HOME/meeting-room/capabilities.json` | 能力自检报告（五行结论、检查时间、每条修法）；「模型中心」顶部读的就是它 |
+| `$DSH_HOME/meeting-room/models.json` | 本地模型注册表（内置目录 + 自定义条目 + 当前启用） |
+| `$DSH_HOME/meeting-room/voices.json` | 声纹库：每人一条质心向量与姓名（**只存向量，不存音频**） |
+| `$DSH_HOME/meeting-room/boot.log` | 启动与关键失败的诊断日志（不含密钥） |
 | `$DSH_HOME/speech-to-text/speakers/` | 发言人模型 |
 | `$DSH_HOME/handwriting/` | 手写识别模型 |
+
+卸载插件**不会**删除上面这些数据（见「安装 → 卸载」）；要清理请自己删对应目录。
 
 ## 已知限制
 
@@ -453,16 +596,22 @@ ls node_modules/dsh-meeting-room/host-*.js             # 应列出 11 个
 
 | 路径 | 作用 |
 | --- | --- |
-| `index.js` | 宿主半边：事件接线（会话↔会议生命周期、归档准入）、路由注册、工具注册（`meeting_read` / `meeting_write` / `meeting_note_write` / `meeting_revise` / `meeting_save_document`）；业务逻辑在 `host-*.js` |
-| `client.js` | 浏览器半边：采集、会话右侧面板、会议管理页 |
+| `index.js` | 宿主半边：事件接线（会话↔会议生命周期、归档准入）、路由注册、工具注册（`meeting_read` / `meeting_write` / `meeting_note_write` / `meeting_revise` / `meeting_save_document` / `meeting_cloud`）；业务逻辑在 `host-*.js` |
+| `client.js` | 浏览器半边：采集、会话右侧面板、会议管理页（含**模型中心**页签） |
+| `host-cloud-actions.js` | 云端设置白名单、供应商预设、`测试连接` 探测、降级判定、speaker 前缀清洗与 S1/S2 归一 |
+| `host-providers.js` | 唯一对外请求的模块：同意/模式门禁、限流与超时、脱敏、能力缓存、转写/声纹/纪要调用 |
+| `host-capabilities.js` | 能力自检五行（asr/声纹/手写/云端/Python，Python 是**写探测**）与报告落盘 |
 | `speaker-worker.js` | 子进程：说话人向量提取与画廊 |
 | `handwriting-worker.js` | 子进程：本地手写识别 |
 | `host-package.js` | 会议工程包的打包与导入（ZIP 读写只用 Node 自带 zlib） |
-| `smoke.mjs` | 发布前自动化冒烟：`node smoke.mjs` |
+| `smoke.mjs` | 发布前自动化冒烟：`node smoke.mjs`（**266 项**） |
+| `tools/install-check.mjs` | 装完自检：bundles / `allowBuilds` / 发布清单 / `dsh.client.inject` / 依赖可解析（含零依赖的 asar 读取） |
+| `tools/uninstall.mjs` | 卸载：默认 dry-run 列将删项，`--apply` 才调用 `dsh plugin remove` 并回读核对 |
+| `tools/recognize-note.mjs` | 开发工具：对一张手写 PNG 直接跑识别 |
 | `TESTING.md` | 发布前系统化测试清单（自动化 + 手动 A–Q 组） |
 | `minutes-docx.py` | 用 python-docx 把纪要渲染成 Word |
+| `scores-xlsx.py` | 用 openpyxl 把月度评分导成 Excel |
 | `cordis.patch.yml` | 组合包 patch，把宿主行插进 profile 层栈 |
-| `tools/recognize-note.mjs` | 开发工具：对一张手写 PNG 直接跑识别 |
 
 ## 制作
 

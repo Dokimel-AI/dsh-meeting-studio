@@ -10,8 +10,10 @@
 | --- | --- |
 | **M1 模型注册表 + 本地模型安装** | **已完成**（`host-models.js`、`/models*` 路由、管理页「模型」页签、说话人与手写按注册表取模型、会议记录写下 `speakerModel`） |
 | **M2 云端 provider 与隐私开关** | **已完成**（`host-providers.js`、`/cloud` 与 `/cloud/test`、`/chunk` 接入云端识别、设置页开关与"音频将发往哪个域名"、密钥脱敏、连续失败自动回退；测试断言"未同意时零请求""消息里搜不到密钥""工程包里搜不到密钥"） |
-| **M3 全量重聚类与跨会议声纹库** | **已完成**（说话人设置进 `settings.json`：阈值三档预设 + 手动值、全量重判开关与上限；停录后的补标改为**默认全量**（旧的 60 条上限可开关回去）；`host-voices.js` 声纹库——只存质心向量、只在人命名时写入、建议姓名需人确认；`/speaker/settings` 与 `/voices*` 路由；设置页「发言人识别」与发言人页的建议行） |
-| **M4 数字日期规整 + 切句参数可调** | **已完成**（`host-text.js` 纯本地规整：日期/时间/百分比/金额/数量，规则可逐条开关，结果与被识别的原文并存；`host-transcript.js` 把规整规则与切句参数（最短/最长/停顿判定/静音阈值）放进设置，并**真正接进浏览器半边的采集循环**） || M4 的其余条目 | **部分受限**：见下方说明（热词注入、流式中间结果、双通道） |
+| **M3 全量重聚类与跨会议声纹库** | **已完成**（说话人设置进 `$DSH_HOME/meeting-room/webhooks.json`：阈值三档预设 + 手动值、全量重判开关与上限；停录后的补标改为**默认全量**（旧的 60 条上限可开关回去）；`host-voices.js` 声纹库——只存质心向量、只在人命名时写入、建议姓名需人确认；`/speaker/settings` 与 `/voices*` 路由；设置页「发言人识别」与发言人页的建议行） |
+| **M4 数字日期规整 + 切句参数可调** | **已完成**（`host-text.js` 纯本地规整：日期/时间/百分比/金额/数量，规则可逐条开关，结果与被识别的原文并存；`host-transcript.js` 把规整规则与切句参数（最短/最长/停顿判定/静音阈值）放进设置，并**真正接进浏览器半边的采集循环**） |
+| **M4 的其余条目** | **部分受限**：见下方说明（热词注入、流式中间结果、双通道） |
+| **R1–R5（fork）模型中心 / 云端协商 / speaker / 工具** | **已完成**（见 §4.1 字段表与 §10；UI 在「会议管理 → 模型中心」，能力缓存落 `webhooks.json` 的 `cloud.asr.capability`，工具 `meeting_cloud`） |
 
 M3 里的**重叠语音（一条 cue 记两个说话人）标记为「受限」**：本地说话人 worker 的协议是
 "一段音频 → 一个标签"，要支持它得换模型或加分离器，属于下一阶段的前提条件 —— 本轮不假装支持。
@@ -48,7 +50,7 @@ M1 落地后的实际行为：内置目录就是一直以来的两个固定模�
 3. **人工确认权威**：模型只产草稿；任务与评分仍要人确认（这条与模型强弱无关）。
 4. **可回退**：云端失败、超时、限额用尽时，退回本地模型继续工作，且**如实告知发生了回退**。
 5. **可核对**：任何下载的模型都带**大小与 sha256**，导入的工程包若引用本机没有的模型要**明确提示**。
-6. **密钥不进日志、不进导出包**：`settings.json` 里的密钥不写进 boot.log，也不进会议工程包。
+6. **密钥不进日志、不进导出包**：`$DSH_HOME/meeting-room/webhooks.json` 里的密钥不写进 boot.log，也不进会议工程包。
 
 ## 1. 现状（0.1.0-preview.1）
 
@@ -76,7 +78,7 @@ M1 落地后的实际行为：内置目录就是一直以来的两个固定模�
       "name": "3D-Speaker CAM++（中英，16k）",
       "runtime": "onnx",                        // onnx | http
       "source": { "url": "https://…", "mirrors": ["https://…"] },
-      "files": [{ "name": "model.onnx", "bytes": 28281138, "sha256": "f682…" }],
+      "files": [{ "name": "model.onnx", "bytes": 28281139, "sha256": "e6af4d4c444f3dab01d991bb9b7d5af98eb979e329f6c8880a19d5553561ed25" }],
       "languages": ["zh", "en"],
       "quality": { "sizeClass": "small", "note": "通用场景够用；嘈杂环境建议换 large" },
       "licence": "见上游模型卡",
@@ -123,17 +125,74 @@ provider.transcribe({ pcm, sampleRate, language, hotwords, signal }) -> {
 provider.embed({ pcm, sampleRate }) -> { vector: Float32Array, model: 'cloud.xxx' }
 ```
 
-- **配置**：`settings.json` → `cloud: { asr: { provider, baseUrl, apiKey, model, language }, speaker: {...}, llm: {...} }`；
+- **配置**：`$DSH_HOME/meeting-room/webhooks.json` 的 `cloud` 段（字段表见 §4.1）；
 - **协议**：优先 **OpenAI 兼容**（`/v1/audio/transcriptions` 风格）+ 自定义 `baseUrl`，这样大多数
   自建网关（vLLM、FastWhisper 服务、各家云）都能直接接；接不了的部分用"自定义适配器"登记；
 - **隐私开关**：`cloud.consent` 记录人已阅读并同意上传；界面明确列出
   - 上传**什么**（仅当前录音片段 vs 整场录音）；
   - 传到**哪个域名**（显示完整 host，不只显示"云端"）；
   - 是否**保留**（请求头声明不留存；插件侧不缓存返回的音频）；
-- **密钥**：只存 `settings.json`（权限 0600 尽力而为），日志与工程包一律脱敏（`sk-***`）；
-- **限额与超时**：每次请求 20 s 超时（沿用现有风格）、失败重试 1 次、
-  单位时间请求上限（如 60 次/分钟）与**费用估算**（按分钟音频给出粗估，显示在设置页）；
+- **密钥**：只存 `$DSH_HOME/meeting-room/webhooks.json`，日志与工程包一律脱敏（`sk-***`）；
+- **限额与超时**：每次请求 20 s 超时（沿用现有风格）、5xx 重试 1 次、
+  单位时间请求上限（如 60 次/分钟）；
 - **回退**：云端连续失败 N 次 → 自动切回本地并提示"已回退到本地识别（原因）"，不再反复重试。
+
+### 4.1 设置字段（`webhooks.json` 的 `cloud` 段）
+
+`$DSH_HOME/meeting-room/webhooks.json` 是唯一的设置文件（早期文档写作 `settings.json`，已统一改名）。
+`cloud` 是**透传**子对象：只能在它内部加字段——`readSettings()` 只透传 cloud / speaker / transcript，
+新增顶层键会在下一次任意设置写入时被静默丢弃。
+
+```jsonc
+"cloud": {
+  "consent": false,                              // 明确同意上传；false 时一个请求都不发
+  "mode": "local",                               // local | prefer-cloud | cloud-only
+  "asr": {
+    "provider": "off",                           // off | openai-compatible | custom
+    "baseUrl": "", "model": "", "language": "", "apiKey": "",
+    "keepRemote": false,                         // false → 请求带 retention=none
+    "stripSpeakerPrefix": true,                  // 写入实录前去掉「1: 」等说话人前缀
+    "capability": null                           // 服务端写的能力缓存，见下表
+  },
+  "speaker": { "provider": "off", "baseUrl": "", "model": "", "apiKey": "" },
+  "llm": { "provider": "off", "baseUrl": "", "model": "", "apiKey": "", "temperature": 0.2 }
+}
+```
+
+| 字段 | 取值 | 谁写 | 说明 |
+| --- | --- | --- | --- |
+| `consent` | boolean，默认 false | 人 | 隐私总开关。**agent 用 `meeting_cloud` 改它之前必须先问用户** |
+| `mode` | `local` / `prefer-cloud` / `cloud-only`，默认 local | 人 | `local` 即使已同意也不发；`prefer-cloud` 连续失败 3 次回退本地；`cloud-only` 失败报错、不回退 |
+| `asr.provider` | `off` / `openai-compatible` / `custom` | 人 | 预设只填地址与候选模型名，不含行为 |
+| `asr.baseUrl` / `asr.model` | string | 人 | 请求 `POST {baseUrl}/audio/transcriptions`，插件自己补后半段；地址一般以 `/v1` 结尾 |
+| `asr.language` | string，空=自动 | 人 | 作为 multipart 的 `language` 字段发送 |
+| `asr.apiKey` | string | 人 | 只存本机；界面/日志/工程包一律脱敏 `sk-***`。提交空串=保持已保存的值，`null`=清空 |
+| `asr.keepRemote` | boolean，默认 false | 人 | false 时请求带 `retention=none`（声明不保留） |
+| `asr.stripSpeakerPrefix` | boolean，**默认 true** | 人 | 云端文字前的「1: 」「SPEAKER_00: 」是否在写进 `cue.text` 前去掉；原文保留在 `cue.cloudText` |
+| `asr.capability` | object 或 null | **只有服务端** | 最近一次真实探测/降级的结果；客户端提交时整段忽略（不接受"自称"的能力） |
+| `speaker.*` | provider/baseUrl/model/apiKey | 人 | 可选的云端声纹：`POST {baseUrl}/speaker/embedding` 返回 `{vector}` |
+| `llm.*` | provider/baseUrl/model/apiKey/temperature（0–2，默认 0.2） | 人 | 纪要改写：`POST {baseUrl}/chat/completions`；不配置时行为不变，仍由当前会话的模型生成 |
+
+**`cloud.asr.capability` 的字段与写入时机**
+
+| 字段 | 含义 |
+| --- | --- |
+| `supportsVerboseJson` | 对方接不接受 `response_format=verbose_json`。true → 每段带它（有分段/时间）；false → 首请求就不带 |
+| `returnsSegments` | 探测那次回答里有没有 `segments` |
+| `returnsSpeaker` | `segments[].speaker` 有没有值；有则归一成 S1/S2 记进 `cue.cloudSpeaker` |
+| `model` | 探测/降级那次回答里的模型名（面板回显用） |
+| `probedAt` | epoch ms |
+| `evidence` | 一行证据（HTTP 状态、形态、段数、有无 speaker），≤200 字、已脱敏 |
+
+写入时机只有两处：①「测试连接」探测成功后；②识别时遇到 400/422 且响应体提到
+`response_format` / `verbose_json` / `format` → 去掉该字段**重试一次**成功后（`degraded:true`）。
+缓存的意义是让下一次识别的**第一个请求就按对的形态发**，不必每段先撞一次 400；换地址或模型后
+由下一次探测覆盖。写盘失败只记 `boot_log`，不会把已经成功的识别变成失败。降级重试是固定行为，
+没有开关。
+
+**同一份校验**：界面的 `POST /cloud` 和工具 `meeting_cloud {action:"set"}` 都走
+`host-cloud-actions.js` 的 `normalizeCloudPatch()`——未知字段**整份拒绝**并列出，越界值夹紧或拒绝，
+`capability` 只允许服务端写。因此两边对同一个非法 patch 返回同一句话（有冒烟断言盯着）。
 
 ## 5. 语音识别增强
 
@@ -195,3 +254,41 @@ provider.embed({ pcm, sampleRate }) -> { vector: Float32Array, model: 'cloud.xxx
 - **声纹库是最敏感的数据**：只存向量、可一键清空、默认本机、工程包默认不含；
 - **不追新模型数量**：目录里宁可少而准（每个 kind 2–3 个），每个都实测过 RTF 与中文效果再收录；
 - **一切可回退**：任何增强都保留"用回内置默认"的路径，避免升级后无法工作。
+
+## 10. 安装、依赖与客户端注入（2026-11-23 实测）
+
+三条都是真机上踩出来的，与模型配置直接相关，写在这里免得重犯。
+
+### 10.1 pnpm 11 的构建放行键换成 `allowBuilds`
+
+- pnpm 11 **忽略** `package.json` 里的 `pnpm.onlyBuiltDependencies`，改读 profile 的
+  `pnpm-workspace.yaml`：`allowBuilds: { onnxruntime-node: true }`。
+- **必须先写 `allowBuilds` 再 `add`**。先 add 失败、再 `pnpm approve-builds` 补批准，只会得到
+  `Already up to date`，`dsh.profile.bundles` 仍然不注册（studio-ws 实测）。
+- 做 **Web 端验证**的 profile 若依赖 `@deepseek-ai/dsh-web-app`，它的依赖 `koffi` 也带构建脚本，
+  必须一起放行，否则 `add` 直接 exit 1：`allowBuilds: { koffi: true, onnxruntime-node: true }`。
+- 未预置时的典型症状：日志出现 `+ dsh-meeting-studio` 但紧接着
+  `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: onnxruntime-node@1.20.1` 并以 exit 1 结束，
+  dependency 在、`bundles` 空、界面不出现。`tools/install-check.mjs` 的 `allowBuilds` 一项就是查这个。
+
+### 10.2 依赖声明：`sherpa-onnx-node` 改为可选安装
+
+- `sherpa-onnx-node` 从 `peerDependencies` 移到 **`optionalDependencies`**：装插件时自动带上，
+  装不上也不阻塞安装；缺失只影响本地转写与声纹，由能力自检的 asr/声纹两行如实报红。
+- `onnxruntime-node`（手写）与 `pinyin-pro`（同音订正）仍是 `dependencies`。
+- 目录 `link:` 安装**不会装传递依赖**（债-20）：`onnxruntime-node` 等解析不到，只能用于开发；
+  真实安装请打包 tgz 后 `add`，并用 `tools/install-check.mjs` 逐项核对。
+
+### 10.3 `dsh.client.inject` 的门禁：一条对不上就整包客户端消失
+
+- 客户端注入要求 `dsh.client.inject` 里**每一个**名字都在当前 Web 壳的客户端包里。
+- 实测（DSH 0.2.2-rc.5）：壳里**没有** `@deepseek-ai/dsh-client-ui-primitives` 与
+  `@deepseek-ai/dsh-client-ui-slots`。把这两个名字留在 inject 里，后果是**整包客户端被注入门禁
+  跳过**：插件在「已安装插件」里显示已启用、名字描述都对，但左栏没有「会议管理」、会话头也没有
+  「打开会议」，且没有任何报错。
+- 现在 inject 只列壳里存在的 8 项：`dsh-client-locale`、`dsh-client-ui-renderer`、
+  `dsh-client-ui-layout`、`dsh-client-ui-sidebar`、`dsh-client-ui-sidebar-right`、
+  `dsh-client-ui-conversation`、`dsh-client-ui-workspace`、`dsh-client-ui-plugin-manager`。
+- `tools/install-check.mjs` 会把 inject 每一项与安装副本里的客户端包清单（优先
+  `@deepseek-ai/dsh-web-app` 的依赖；Electron 桌面版则读 `app.asar` 头里的文件清单）逐项比对，
+  缺一个就 FAIL 并列出名字——这是"装上了但界面不出现"的唯一离线预防手段。

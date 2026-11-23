@@ -18,7 +18,7 @@
 
 | 组件 | 协议 | 来源（核对依据） | 说明 |
 | --- | --- | --- | --- |
-| `sherpa-onnx-node`（peer，可选） | **Apache-2.0** | npm 元数据 `license: Apache-2.0`：`https://registry.npmjs.org/sherpa-onnx-node/1.13.8`；上游 LICENSE（Apache License 2.0）：`github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE` | 语音识别 / 声纹后端；由运行环境提供，缺失时插件给出自检提示而不是安装它 |
+| `sherpa-onnx-node`（optionalDependencies，缺了也能装） | **Apache-2.0** | npm 元数据 `license: Apache-2.0`：`https://registry.npmjs.org/sherpa-onnx-node/1.13.8`；上游 LICENSE（Apache License 2.0）：`github.com/k2-fsa/sherpa-onnx/blob/master/LICENSE` | 语音识别 / 声纹后端；由运行环境提供，缺失时插件给出自检提示而不是安装它 |
 | React / ReactDOM | MIT | 随 DeepSeek Harness 分发 | 面板与浏览器半边的界面运行时，由 DSH 客户端提供 |
 | `@deepseek-ai/dsh-client-*` 系列 | 随 DeepSeek Harness 分发 | 见 DeepSeek Harness 自带的许可证与第三方声明 | 客户端槽位、侧栏、设置等平台模块，由宿主在运行时提供 |
 
@@ -29,7 +29,7 @@
 
 | 模型 | 上游 / 模型卡 | 许可证（模型卡声明） | 下载来源 | 校验（插件内置） | 用途 |
 | --- | --- | --- | --- | --- | --- |
-| `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`（3D-Speaker CAM++，中英，16 kHz） | 阿里通义 DAMO / 3D-Speaker：`https://www.modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common` | **Apache License 2.0**（模型卡 `License` 字段）；训练/推理代码仓库 LICENSE 同为 Apache-2.0：`github.com/alibaba-damo-academy/3D-Speaker/blob/main/LICENSE` | k2-fsa/sherpa-onnx GitHub Release（tag `speaker-recongition-models`） | 28,281,138 字节；sha256 `f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11` | 发言人分离（声纹向量与聚类） |
+| `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`（3D-Speaker CAM++，中英，16 kHz） | 阿里通义 DAMO / 3D-Speaker：`https://www.modelscope.cn/models/iic/speech_campplus_sv_zh-cn_16k-common` | **Apache License 2.0**（模型卡 `License` 字段）；训练/推理代码仓库 LICENSE 同为 Apache-2.0：`github.com/alibaba-damo-academy/3D-Speaker/blob/main/LICENSE` | k2-fsa/sherpa-onnx GitHub Release（tag `speaker-recongition-models`） | 28,281,139 字节；sha256 `e6af4d4c444f3dab01d991bb9b7d5af98eb979e329f6c8880a19d5553561ed25`（2026-11-23 重钉） | 发言人分离（声纹向量与聚类） |
 | `handwriting-damo.onnx` + `vocab.txt`（DAMO 手写行识别，ConvNeXt-Tiny） | 阿里通义 DAMO / ModelScope 读光：`https://www.modelscope.cn/models/iic/cv_convnextTiny_ocr-recognition-handwritten_damo` | **Apache License 2.0**（模型卡 `License` 字段） | ModelScope 仓库接口 `https://www.modelscope.cn/api/v1/models/iic/cv_convnextTiny_ocr-recognition-handwritten_damo/repo`（`model.onnx` / `vocab.txt`） | `model.onnx` 76,859,029 字节、sha256 `a98dddb2b4ee1bd0b358bd087ecebc242767eae6657682569fb5e87ce96ea82e`；`vocab.txt` 30,333 字节 | 手写笔记的本地离线识别 |
 | 语音识别模型（SenseVoice 等） | **由 DeepSeek Harness 的语音能力提供**，本插件不下载也不管理 | 随 DeepSeek Harness 分发 | — | — | 录音转写 |
 

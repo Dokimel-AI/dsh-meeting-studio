@@ -176,7 +176,7 @@ async function checkSpeaker() {
       ok: false,
       state: 'missing',
       message: '声纹不可用：缺少 sherpa-onnx-node（依赖未安装，识别会静默跳过）',
-      fix: '在本 profile 安装依赖 sherpa-onnx-node@1.13.8，然后重启 Harness',
+      fix: '先重装插件（sherpa-onnx-node 已是可选依赖，安装时通常自动带上）；仍缺就手动装 sherpa-onnx-node@1.13.8，或改用云端声纹',
       action: 'install-speaker-dependency',
       detail: { ...detail, reason: module.reason },
     }
