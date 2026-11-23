@@ -29,8 +29,13 @@ export const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 /** Pinned speaker-embedding model: 3D-Speaker CAM++, Chinese/English, 16 kHz. */
 export const SPEAKER_MODEL = {
   name: '3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx',
-  bytes: 28281138,
-  sha256: 'f682b514c05d947ee3fa91cd6ec6c5c7543479a128373fa29b1faedccd21fd11',
+  // Re-pinned on 2026-11-23 after a real install failed: the release asset currently served
+  // by GitHub is 28,281,139 bytes with the digest below, while the previous pin (28,281,138 /
+  // f682b514…) no longer matches anything the URL returns. The size guard is what surfaced it
+  // ("大小不符：收到 28281139，应为 28281138"), and every mirror is gone, so the download could
+  // never succeed; the old pin would also have rejected the file on its digest.
+  bytes: 28281139,
+  sha256: 'e6af4d4c444f3dab01d991bb9b7d5af98eb979e329f6c8880a19d5553561ed25',
 }
 
 /**

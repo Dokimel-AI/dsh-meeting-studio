@@ -1423,6 +1423,10 @@ export function publicSegments(meeting) {
  * @returns the assigned name, else the label.
  */
 export function displaySpeaker(meeting, label) {
+  // A cue whose speaker was never judged carries no label at all. Rendered as text that used
+  // to become the literal string "undefined" in minutes and transcripts, so an absent label
+  // is answered with an empty string instead of being passed through.
+  if (typeof label !== 'string' || label === '') return ''
   const name = meeting.speakers?.[label]
   return typeof name === 'string' && name !== '' ? name : label
 }
