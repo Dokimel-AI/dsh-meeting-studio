@@ -2263,10 +2263,14 @@ function cloudCapabilityLines(capability) {
     return ['能力：还没有探测过（用 action=test 测一次就会写入缓存）']
   }
   const evidence = typeof capability.evidence === 'string' ? capability.evidence : ''
+  // `null` means the probe could not tell (it uploads silence), which is not the same claim as
+  // "the provider does not segment". Saying 无 there would contradict a model that does return
+  // segments on real speech, so the unknown state gets its own word.
+  const tri = (value, yes, no) => (value === true ? yes : value === false ? no : '未知')
   return [
     `能力：verbose_json=${capability.supportsVerboseJson === true ? '支持' : '不支持'}`
-      + `　分段=${capability.returnsSegments === true ? '有' : '无'}`
-      + `　说话人=${capability.returnsSpeaker === true ? '有' : '无'}`,
+      + `　分段=${tri(capability.returnsSegments, '有', '无')}`
+      + `　说话人=${tri(capability.returnsSpeaker, '有', '无')}`,
     `能力来源：模型 ${cloudShown(capability.model)}，探测于 ${cloudClockText(capability.probedAt)}`
       + `${evidence === '' ? '' : `，证据：${evidence}`}`,
   ]

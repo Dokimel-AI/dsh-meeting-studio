@@ -100,7 +100,41 @@ summary: 4/5
 
 **再修一个静默失效**：干净 profile 里 `speakerState.phase` 一直是 `unprepared`，而 `labelCue()` 只认 `ready`/`failed`，于是「agent 建会 + 直接喂音频」这条路**永远不出发言人标签**（面板开录会先 prepare，所以只在无面板路径暴露）。现在 `labelCue` 在 `unprepared` 时**懒启动一次** `prepareSpeakers()`（`speakerWarmup` 去重），当前 cue 返回空标签、后续 cue 正常标注。实测同一场：line1/line2 无标签 → line3 `S1` → line4 `S2` → 之后 S1/S2 交替正确。自检的声纹行也补了「首次发言时启动识别器，前一两句可能未标注」。
 
-## 8. 仍未验证（诚实清单）
+## 8. 真实供应商实测（硅基流动，2026-11-23，模型按用户指定）
+
+配置：`baseUrl=https://api.siliconflow.cn/v1`、ASR 模型 `XingChenAGI/XingChenASR-V3.2-Ultra`、
+纪要模型 `Qwen/Qwen3-8B`、consent 开、`mode=prefer-cloud`、`keepRemote=false`。
+
+| 路径 | 结果 | 证据 |
+|---|---|---|
+| ASR 探活（Ultra） | 200 / 477ms，`verbose_json` 支持 | 能力缓存写入，静音探测下 segments 记为 **null（未知）**，证据串注明「静音，无法判断分段」 |
+| 云端转写（Ultra，经 `/chunk` 真路由） | `cloud.used=true`、`degraded=false`、`model=…Ultra`；文本带标点、`localText` 保留、本地 CAM++ 给 S1 | 见 §7 的转写输出 |
+| 降级（Qwen3-ASR-1.7B） | 第一次 400 **且 body 为空** → 去掉 `response_format` 重试 → 200；`verdict=需要降级`、`attempts` 两条、`supportsVerboseJson:false` 入缓存 | 修复前不会重试：`looksLikeFormatRejection` 只看 body 关键词 |
+| 分轨模型（Diarize-V3.0） | segments 带 `speaker:"1"`，`text` 带 `「1: 」` 前缀 | 正好是 R4 要清洗的形态；逐段请求无法跨 cue 认人，本地 CAM++ 仍为准 |
+| LLM 探活（Qwen3-8B） | 200 / 16.9s | 20s 的 cue 超时会误杀，故 LLM 探活给 45s |
+| 云端纪要（`/minutes useCloudLlm`） | 200 / **25.7s**，`llm.ok=true`，输出结构化纪要（含工作安排） | 首次失败是 20s 超时；已改为 120s 并实测通过 |
+
+因此本轮还改了：`guardedFetch` 增加 per-request `timeoutMs`、`cloudLlmComplete` 默认 120s、
+`/minutes` 显式 120s、LLM 探活 45s、超时提示按实际秒数打印；`looksLikeFormatRejection` 把
+「400/422 + 空 body」也算疑似格式拒绝；能力探测的 segments/speaker 用 `null` 表示「测不出」。
+
+## 9. 桌面端（`desktop` profile）安装结果
+
+```
+$ dsh plugin --profile desktop add dsh-meeting-studio-0.1.0-fork.1.tgz   → exit 0
+  node_modules/onnxruntime-node postinstall$ node ./script/install → Done
+$ node tools/install-check.mjs --profile desktop
+  13 项 PASS / 0 提醒（bundles 36 项、发布清单 42 文件、inject 8 项、三个依赖全部可解析）
+```
+
+- 安装前已备份 `package.json` 与 `pnpm-workspace.yaml`（`*.bak-20261123-223158`），并先把
+  `allowBuilds: onnxruntime-node / sherpa-onnx-node` 写进 profile，否则会复现 债-01。
+- 与备份对比：bundles 只多 `dsh-meeting-studio`，dependencies 只多一行；其他 35 个 bundle 未变。
+- **宿主半边已在本进程内热加载生效**：第 9 个工具 `meeting_cloud` 可直接调用，`get` 读到真实配置、
+  `test` 对硅基流动返回 ASR 200/580ms、LLM 200/5.2s。
+- 客户端半边要**刷新页面**（或重启 Harness）才会出现在左侧栏——页面加载时才会拉新的客户端包清单。
+
+## 10. 仍未验证（诚实清单）
 
 - **手写识别**没有真跑：模型 73 MB 未下载（自检如实报「未就绪」）；上传/落库路径由 smoke 覆盖。
 - **真实供应商**（硅基流动/OpenAI/Groq）没有用真 key 调过；只用本机桩验证了协议、能力探测、降级分支与脱敏。
