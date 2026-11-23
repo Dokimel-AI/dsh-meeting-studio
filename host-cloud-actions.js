@@ -35,8 +35,17 @@ export const PROVIDER_PRESETS = [
     id: 'siliconflow',
     name: '硅基流动',
     baseUrl: 'https://api.siliconflow.cn/v1',
-    models: ['FunAudioLLM/SenseVoiceSmall', 'Qwen/Qwen3-ASR-1.7B', 'XingChenASR-V3.2-Ultra'],
-    llmModels: ['Qwen/Qwen2.5-72B-Instruct'],
+    // Verified against GET /v1/models on 2026-11-23: every id below exists. The diarizing
+    // model is listed because it is the only one that returns `speaker` per segment, and the
+    // plug-in keeps that field (R4); the two after it differ in whether they accept
+    // response_format=verbose_json, which is exactly what the capability probe measures.
+    models: [
+      'XingChenAGI/XingChenASR-Diarize-V3.0',
+      'XingChenAGI/XingChenASR-V3.2-Ultra',
+      'Qwen/Qwen3-ASR-1.7B',
+      'FunAudioLLM/SenseVoiceSmall',
+    ],
+    llmModels: ['Qwen/Qwen3-8B', 'deepseek-ai/DeepSeek-V3.2'],
   },
   {
     id: 'openai',
@@ -257,7 +266,14 @@ export function silentWav(seconds = PROBE_AUDIO_SECONDS) {
  */
 export function looksLikeFormatRejection(status, detail) {
   if (status !== 400 && status !== 422) return false
-  return /response_format|verbose_json|format/iu.test(String(detail ?? ''))
+  const text = String(detail ?? '')
+  // SiliconFlow's Qwen3-ASR answers a rejected `response_format` with a 400 and an EMPTY
+  // body (measured 2026-11-23), so a keyword test alone would never retry it. On the
+  // transcription endpoint the only optional field this plugin adds is `response_format`,
+  // so a 400/422 with nothing to read is treated as a format rejection as well: the retry
+  // costs one request and, when the guess was wrong, the second failure is reported as is.
+  if (text.trim() === '') return true
+  return /response_format|verbose_json|format|invalid|unsupported|parameter|字段|参数/iu.test(text)
 }
 
 /**
@@ -425,15 +441,24 @@ export async function probeCloudAsr() {
   const value = attempt.value ?? {}
   const segments = readCloudSegments(value)
   const returnsSpeaker = segments.some((segment) => segment.speaker !== '')
+  // The probe uploads one second of silence, which a service may legitimately transcribe as
+  // nothing at all — including one that does support segments. Reporting "no segments" then
+  // would be a fact about the probe rather than about the provider, so that case stays
+  // `null` (the interface renders it as 未知) unless an earlier probe knew better.
+  const heardSomething = segments.length > 0 || (typeof value.text === 'string' && value.text.trim() !== '')
   const capability = {
     supportsVerboseJson: includeVerbose,
     // Without the verbose request there are no segments to look at, so a known good state is
     // carried over instead of being overwritten by "we did not ask".
-    returnsSegments: includeVerbose ? segments.length > 0 : part.capability?.returnsSegments === true,
-    returnsSpeaker: includeVerbose ? returnsSpeaker : part.capability?.returnsSpeaker === true,
+    returnsSegments: !includeVerbose
+      ? part.capability?.returnsSegments === true
+      : heardSomething ? segments.length > 0 : null,
+    returnsSpeaker: !includeVerbose
+      ? part.capability?.returnsSpeaker === true
+      : heardSomething ? returnsSpeaker : null,
     model: typeof value.model === 'string' && value.model !== '' ? value.model : part.model,
     probedAt: Date.now(),
-    evidence: redact(`HTTP ${attempt.status}，${includeVerbose ? 'verbose_json' : '普通 JSON'}，segments=${segments.length}，speaker=${returnsSpeaker ? 'yes' : 'no'}`).slice(0, 200),
+    evidence: redact(`HTTP ${attempt.status}，${includeVerbose ? 'verbose_json' : '普通 JSON'}，segments=${segments.length}${heardSomething ? '' : '（探测音频是静音，无法判断分段）'}，speaker=${returnsSpeaker ? 'yes' : 'no'}`).slice(0, 200),
   }
   result.ok = true
   result.verdict = degraded ? '需要降级' : '可用'
@@ -487,7 +512,7 @@ export async function probeCloudLlm() {
         messages: [{ role: 'user', content: '回复 ok 两个字' }],
         max_tokens: 8,
       }),
-    }, '云端纪要测试')
+    }, '云端纪要测试', 45_000)
     const ms = Date.now() - started
     const value = await response.json().catch(() => ({}))
     result.http = { status: response.status, ms }

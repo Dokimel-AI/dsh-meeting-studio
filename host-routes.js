@@ -1351,7 +1351,8 @@ export function createHandler(ctx) {
         // a broken LLM must never cost the document the person asked for.
         let llm = { ok: false, reason: '' }
         if (useCloudLlm) {
-          const outcome = await cloudLlmComplete(cloudMinutesMessages(meeting))
+          // 120 s: one real minutes request against SiliconFlow/Qwen3-8B measured 40 s.
+          const outcome = await cloudLlmComplete(cloudMinutesMessages(meeting), { timeoutMs: 120_000 })
           if (outcome.ok === true) {
             content = outcome.text
             llm = { ok: true, reason: '' }

@@ -102,10 +102,12 @@ function readAsrCapability(stored) {
   if (typeof stored.supportsVerboseJson !== 'boolean') return null
   return {
     supportsVerboseJson: stored.supportsVerboseJson,
-    returnsSegments: stored.returnsSegments === true,
-    returnsSpeaker: stored.returnsSpeaker === true,
+    // `null` here means "the probe could not tell" (it uploads silence), which is a different
+    // statement from "the provider does not segment"; the interface renders it as 未知.
+    returnsSegments: stored.returnsSegments === true ? true : stored.returnsSegments === false ? false : null,
+    returnsSpeaker: stored.returnsSpeaker === true ? true : stored.returnsSpeaker === false ? false : null,
     model: typeof stored.model === 'string' ? stored.model : '',
-    probedAt: Number.isFinite(stored.probedAt) ? stored.probedAt : 0,
+    probedAt: Number.isFinite(stored.probedAt) ? Number(stored.probedAt) : 0,
     evidence: typeof stored.evidence === 'string' ? redact(stored.evidence).slice(0, 200) : '',
   }
 }
@@ -307,9 +309,12 @@ export function resetCloudFallback() {
  * @param url - target.
  * @param options - fetch options.
  * @param label - what to call this request in messages.
+ * @param timeoutMs - per-attempt deadline. A cue needs seconds; writing a whole meeting's
+ *   minutes with a small model measured 40 s against the real service (2026-11-23), so the
+ *   caller decides instead of one constant deciding for every operation.
  * @returns the response.
  */
-export async function guardedFetch(url, options, label) {
+export async function guardedFetch(url, options, label, timeoutMs = REQUEST_TIMEOUT_MS) {
   const now = Date.now()
   cloudState.recent = cloudState.recent.filter((at) => now - at < 60_000)
   if (cloudState.recent.length >= MAX_REQUESTS_PER_MINUTE) {
@@ -321,7 +326,7 @@ export async function guardedFetch(url, options, label) {
   let lastDetail = ''
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      const response = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) })
       if (response.status >= 500 && attempt === 0) {
         lastStatus = response.status
         lastError = `HTTP ${response.status}`
@@ -345,7 +350,7 @@ export async function guardedFetch(url, options, label) {
       return response
     } catch (failure) {
       lastError = failure instanceof Error ? failure.message : String(failure)
-      if (failure?.name === 'TimeoutError' || /aborted|timeout/iu.test(lastError)) lastError = `${label}：超时（${REQUEST_TIMEOUT_MS / 1000} 秒）`
+      if (failure?.name === 'TimeoutError' || /aborted|timeout/iu.test(lastError)) lastError = `${label}：超时（${timeoutMs / 1000} 秒）`
       if (failure?.final === true || attempt === 1) break
     }
   }
@@ -506,7 +511,7 @@ export async function cloudEmbed(input) {
  * @param chatMessages - `[{ role, content }]` messages.
  * @returns `{ ok, skipped, text, model, reason }`.
  */
-export async function cloudLlmComplete(chatMessages) {
+export async function cloudLlmComplete(chatMessages, options = {}) {
   const status = await cloudStatus('llm')
   if (!status.ok) return { ok: false, skipped: true, text: '', model: '', reason: status.reason }
   const part = status.cloud.llm
@@ -515,12 +520,16 @@ export async function cloudLlmComplete(chatMessages) {
     'Content-Type': 'application/json',
     ...(part.apiKey === '' ? {} : { Authorization: `Bearer ${part.apiKey}` }),
   }
+  // Writing minutes is a long generation, not a cue: one real request against
+  // SiliconFlow/Qwen3-8B took 40 s end to end, which the cue-sized 20 s deadline would
+  // always cut off. The caller passes how long it is willing to wait.
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? Number(options.timeoutMs) : 120_000
   try {
     const response = await guardedFetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ model: part.model, messages: chatMessages, temperature: part.temperature, max_tokens: 2048 }),
-    }, '云端纪要')
+    }, '云端纪要', timeoutMs)
     const value = await response.json().catch(() => ({}))
     const content = typeof value?.choices?.[0]?.message?.content === 'string' ? value.choices[0].message.content.trim() : ''
     if (content === '') throw new Error('云端纪要返回了空文本')
