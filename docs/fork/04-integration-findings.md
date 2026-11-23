@@ -134,7 +134,34 @@ $ node tools/install-check.mjs --profile desktop
   `test` 对硅基流动返回 ASR 200/580ms、LLM 200/5.2s。
 - 客户端半边要**刷新页面**（或重启 Harness）才会出现在左侧栏——页面加载时才会拉新的客户端包清单。
 
-## 10. 仍未验证（诚实清单）
+## 10. 品牌、视觉与发布（2026-11-23 收尾）
+
+**品牌**：制作方由上游机构改为 Dokimel AI（`lion20231226@outlook.com`, https://github.com/Dokimel-AI）。
+9 个 JS 文件头、`package.json`（author/contributors/repository/homepage/bugs）、README 三处、NOTICE、`client.js` 关于框同步；
+**LICENSE 保留上游 MIT 版权行并新增 Dokimel AI 一行**——MIT 要求原始版权声明随分发保留，替换掉它就不是 fork 而是抄袭。
+上游作者以 `contributors` 身份保留署名。
+
+**视觉审查（按 `dsh-client-ui-ux` 的 alignment / spacing 规则对照真实页面）**，修掉三处：
+
+| 问题 | 性质 | 修法 |
+|---|---|---|
+| `MC_LAMP.warn` 使用 `--dsw-alias-state-warning-primary` | **不存在的 token**（实际是 `state-warn-primary`），一直静默回落到硬编码色，深色主题下不可控 | 改对 token 名 |
+| 判定徽章 `fontWeight: 600` | 违反「插件新增 CSS 字重 ≤500」 | 改 500 |
+| 三家云端卡片共用「OpenAI 兼容（/audio/transcriptions）」 | 同一个控件在**纪要 LLM** 与**声纹**卡也出现，端点标注误导（那两处分别是 `/chat/completions`、`/speaker/embedding`） | 统一改为「OpenAI 兼容接口」，端点由各卡片的 hint 说明 |
+
+自检结论：`MC_STACK` 的 14px 与页面 `styles.hubBody` 的 14px 同一节奏，`.mr-card` 内 10px —— 外层 > 内层成立；
+点状状态灯带 `aria-hidden` 且行内另有文字状态，颜色不是唯一通道。**未做**：像素级截图比对与深色主题截图（本机视觉模型不可用，
+只能读 DOM/无障碍树与样式源），深色由 token（light/dark 双语义）保证，需人眼复核一次。
+
+## 11. 发布与安装源
+
+- 仓库：https://github.com/Dokimel-AI/dsh-meeting-studio（public，默认分支 `main`，含全部 13 个提交）
+- 本机安装源从「本地 tgz」换成 `github:Dokimel-AI/dsh-meeting-studio#main`：
+  `tools/uninstall.mjs --apply` 卸载旧 tgz → `dsh plugin --profile desktop add github:...` → exit 0
+  → `install-check` 13 项 PASS → 安装副本已含品牌与三处 UI 修复（逐条 grep 验证）。
+- 以后升级只需 `dsh plugin --profile desktop add github:Dokimel-AI/dsh-meeting-studio#main` 再重启。
+
+## 12. 仍未验证（诚实清单）
 
 - **手写识别**没有真跑：模型 73 MB 未下载（自检如实报「未就绪」）；上传/落库路径由 smoke 覆盖。
 - **真实供应商**（硅基流动/OpenAI/Groq）没有用真 key 调过；只用本机桩验证了协议、能力探测、降级分支与脱敏。
