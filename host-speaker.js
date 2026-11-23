@@ -135,6 +135,12 @@ export function retireSpeakerWorker() {
 export let speakerWorker = null
 
 /**
+ * Whether the lazy warm-up has been kicked off, so the cue path starts it once and never
+ * spawns a queue of prepare calls behind a slow model check.
+ */
+export const speakerWarmup = { started: false }
+
+/**
  * Download the pinned speaker model, verifying its byte count and SHA-256 first.
  * @param ctx - Host context, used for logging which origin failed.
  * @returns after a verified model is in place.
@@ -317,7 +323,17 @@ export async function labelCue(ctx, pcm, contextPcm) {
     // A worker that died mid-meeting must not silently end labeling for the rest of
     // the meeting; 'unprepared' means the model itself is missing, so only a failed
     // worker is worth one bounded revive attempt.
-    if (speakerState.phase !== 'failed') return none
+    if (speakerState.phase !== 'failed') {
+      // 'unprepared' used to mean "no labels until someone opens the panel and presses
+      // prepare", which silently disabled diarization for a meeting started by an agent or
+      // by the chunk endpoint. Start preparing once, here, and let later cues use it: the
+      // first cue of such a meeting stays unlabelled, the rest do not.
+      if (speakerState.phase === 'unprepared' && !speakerWarmup.started) {
+        speakerWarmup.started = true
+        void prepareSpeakers(ctx).catch(() => { speakerWarmup.started = false })
+      }
+      return none
+    }
     if (!(await reviveSpeakerWorker(ctx))) return none
   }
   let worker

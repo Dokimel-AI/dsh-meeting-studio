@@ -98,6 +98,8 @@ summary: 4/5
 
 **顺带修掉的一个假红**：启动自检最初在激活后 ~2s 就跑，而语音服务先注册、再校验模型，于是健康机器被报成「识别模型尚未就绪」。现在自检延后 10s（`setTimeout` + `ctx.effect` 清理），且把 provider 的「正在启动/校验」单独措辞，不再冒充故障。
 
+**再修一个静默失效**：干净 profile 里 `speakerState.phase` 一直是 `unprepared`，而 `labelCue()` 只认 `ready`/`failed`，于是「agent 建会 + 直接喂音频」这条路**永远不出发言人标签**（面板开录会先 prepare，所以只在无面板路径暴露）。现在 `labelCue` 在 `unprepared` 时**懒启动一次** `prepareSpeakers()`（`speakerWarmup` 去重），当前 cue 返回空标签、后续 cue 正常标注。实测同一场：line1/line2 无标签 → line3 `S1` → line4 `S2` → 之后 S1/S2 交替正确。自检的声纹行也补了「首次发言时启动识别器，前一两句可能未标注」。
+
 ## 8. 仍未验证（诚实清单）
 
 - **手写识别**没有真跑：模型 73 MB 未下载（自检如实报「未就绪」）；上传/落库路径由 smoke 覆盖。

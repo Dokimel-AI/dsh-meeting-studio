@@ -203,7 +203,7 @@ async function checkSpeaker() {
       detail,
     }
   }
-  return { ok: true, state: 'ready', message: `声纹就绪：${model.name}`, fix: '', action: '', detail }
+  return { ok: true, state: 'ready', message: `声纹就绪：${model.name}（首次发言时启动识别器，前一两句可能未标注）`, fix: '', action: '', detail }
 }
 
 /**
