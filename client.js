@@ -1300,7 +1300,7 @@ registerProcessor('meeting-capture', MeetingCapture)
       error: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-state-error-primary)' },
       note: { margin: 0, fontSize: '11px', opacity: 0.7, wordBreak: 'break-all' },
       actions: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
-      hub: { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '860px', height: '100%', minHeight: 0, boxSizing: 'border-box' },
+      hub: { padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '860px', width: '100%', margin: '0 auto', height: '100%', minHeight: 0, boxSizing: 'border-box' },
       /**
        * The scrolling part of the page: the heading, the status card and the tab row stay put,
        * and each tab's own content moves under them once it is taller than the frame.
