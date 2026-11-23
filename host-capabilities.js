@@ -151,6 +151,18 @@ function checkAsr(ctx) {
   if (speech.ready === true) {
     return { ok: true, state: 'ready', message: `本机识别就绪（${speech.providerId || '默认'}）`, fix: '', action: '', detail: { phase: speech.phase } }
   }
+  // A provider that is only still verifying its model is not a broken one: reporting it red at
+  // boot was a false alarm, because this probe can run before the provider finishes starting.
+  if (speech.busy === true) {
+    return {
+      ok: false,
+      state: 'preparing',
+      message: `语音服务正在启动或校验（${speech.phase}）`,
+      fix: '等几秒再点「重新自检」；仍然红就先点「准备模型」',
+      action: 'prepare-asr',
+      detail: { phase: speech.phase },
+    }
+  }
   const progress = speech.totalBytes > 0 ? `（${Math.floor((100 * speech.completedBytes) / speech.totalBytes)}%）` : ''
   return {
     ok: false,

@@ -516,17 +516,25 @@ export function apply(ctx) {
   // Measure once at activation so the first visit to the model center opens on facts
   // instead of a spinner: which speech service is present, whether the speaker and
   // handwriting models are on disk, whether the Python renderers can actually write, and
-  // whether the cloud is configured. Never awaited and never throwing: a probe may take a
-  // few seconds (it spawns Python), and a broken probe must not delay or break activation.
-  void refreshReport(ctx).then(
-    (outcome) => {
-      const ready = Object.entries(outcome.report.checks)
-        .filter(([, row]) => row.ok === true)
-        .map(([id]) => id)
-      bootLog('capabilities', `ready=${ready.join('+') || 'none'} saved=${outcome.saved === true ? 'yes' : 'no'}`)
-    },
-    (error) => { bootLog('capabilities-failed', error instanceof Error ? error.message : String(error)) },
-  )
+  // whether the cloud is configured. Never awaited and never throwing.
+  //
+  // It is deliberately delayed: the speech provider registers its service first and only
+  // then verifies its model, so probing immediately reported "not ready" on a machine whose
+  // recogniser was healthy — a false red on the very page meant to build trust. Ten seconds
+  // is enough for the provider to reach `standby`, and the panel's "check again" button
+  // covers anything slower.
+  const capabilitiesTimer = setTimeout(() => {
+    void refreshReport(ctx).then(
+      (outcome) => {
+        const ready = Object.entries(outcome.report.checks)
+          .filter(([, row]) => row.ok === true)
+          .map(([id]) => id)
+        bootLog('capabilities', `ready=${ready.join('+') || 'none'} saved=${outcome.saved === true ? 'yes' : 'no'}`)
+      },
+      (error) => { bootLog('capabilities-failed', error instanceof Error ? error.message : String(error)) },
+    )
+  }, 10_000)
+  ctx.effect(() => () => { clearTimeout(capabilitiesTimer) }, 'meeting-room: capability self-check')
 
   // ── Restore persisted meetings, THEN sweep restored sessions ────────────
   // The sweep must run after the store read back its files, or a restored

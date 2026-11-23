@@ -54,8 +54,53 @@ labels: ["S1","S2"]     # 两个音色被正确分成两个人
 
 所以正确的干净安装顺序是：**建 profile → 写 allowBuilds（含 onnxruntime-node，做 Web 验证再加 koffi）→ `npm pack` 出 tgz → `dsh plugin add <tgz>` → install-check**。
 
-## 6. 未在真实界面验证的部分（诚实清单）
+## 6. 「测试连接」在真实界面里跑通（本地桩，不花真钱）
 
-- 云端卡片的「测试连接」按钮没有在浏览器里真点（需要真实供应商 key；HTTP 层与工具体已用本地桩验证 36/36 + 47/47）。
-- 手写板的识别没有跑（模型 73 MB 未下载；能力自检如实报「未就绪」）。
-- 桌面端（`desktop` profile）没有安装本插件；上面的验证都发生在 `studio-web` 临时 profile，避免动用户正在用的桌面配置。
+在 `studio-demo` 的浏览器里：选预设「OpenAI」→ 把 baseUrl 改成本机桩 `http://127.0.0.1:3411/v1` → 填测试 key → 勾同意 → 识别方式切「云端优先」→ 保存 → 测试连接。界面原文：
+
+```
+结论：可用
+HTTP / 耗时：200 · 5ms
+verbose_json：支持   segments：支持   speaker：支持
+发往：127.0.0.1:3411 · 不保留 · 探测音频 1s
+尝试：verbose_json 200 5ms
+原因：已连通（stub-asr，1 段）
+```
+
+桩的请求日志（`GET /hits`）：`POST /v1/audio/transcriptions  verbose=true  Bearer sk-test-…`，说明能力探测真的带上了 `response_format`、密钥只作为 Bearer 头发送；随后 `GET /cloud` 的 `asr.capability` 变成
+`{supportsVerboseJson:true, returnsSegments:true, returnsSpeaker:true, model:'stub-asr', evidence:'HTTP 200，verbose_json，segments=1，speaker=yes'}`。
+
+再走一次真实 `/chunk`（云端优先、桩返回 `'1: 这是桩返回的一句话。'`）：
+
+```json
+{"text":"这是桩返回的一句话。","localText":"各位好，今天我们把三季度的交付情况过一遍…",
+ "cloudText":"1: 这是桩返回的一句话。","cloudSpeaker":"S1","asrModel":"stub-asr","degraded":false}
+```
+
+→ **R4 的四条语义同时成立**：前缀被清洗、原文留在 cloudText、云端 speaker 归一成 S1、本地文字留在 localText。
+测完已把云端配置复位（`mode=local`、`consent=false`、key 清空），`webhooks.json` 里没有测试密钥。
+
+## 7. 干净安装 + 最终自检（`studio-demo`，全新 profile）
+
+```
+$ dsh plugin --profile studio-demo add <tgz>            → exit 0，bundles 含本插件
+$ node tools/install-check.mjs --profile studio-demo    → 结果：通过（13 项 PASS，0 项提醒）
+$ GET /meeting-room/capabilities
+asr: ok=True  ready   本机识别就绪（sensevoice-local）
+speaker: ok=True  ready   声纹就绪：3D-Speaker CAM++
+handwriting: ok=False  not-downloaded   手写模型未就绪（73 MB 未下载，如实报）
+cloud: ok=True  off     云端识别未启用
+python: ok=True  ready  Word/Excel 导出可用
+summary: 4/5
+```
+
+界面同步显示「可用 4/5」（截图 `evidence/model-center-final-4of5.png`）。
+
+**顺带修掉的一个假红**：启动自检最初在激活后 ~2s 就跑，而语音服务先注册、再校验模型，于是健康机器被报成「识别模型尚未就绪」。现在自检延后 10s（`setTimeout` + `ctx.effect` 清理），且把 provider 的「正在启动/校验」单独措辞，不再冒充故障。
+
+## 8. 仍未验证（诚实清单）
+
+- **手写识别**没有真跑：模型 73 MB 未下载（自检如实报「未就绪」）；上传/落库路径由 smoke 覆盖。
+- **真实供应商**（硅基流动/OpenAI/Groq）没有用真 key 调过；只用本机桩验证了协议、能力探测、降级分支与脱敏。
+- **桌面端 `desktop` profile 没有安装本插件**：全部验证发生在临时 profile（`studio-demo`），没有动用户正在用的桌面配置；要装进桌面端需重启 Harness（安装步骤见 README）。
+- 录音链路（麦克风采集）没有用真实麦克风跑；`/chunk` 用合成 PCM 走的是同一条服务端路径。
