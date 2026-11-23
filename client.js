@@ -575,6 +575,67 @@ registerProcessor('meeting-capture', MeetingCapture)
       prepareInPanel: '下载本地模型',
       preparingInPanel: '正在准备…',
       preparedInPanel: '模型已就绪',
+      hubTabModelCenter: '模型中心',
+      mcIntro: '模型中心集中管理三件事：这台机器现在能做什么、本地模型装到哪一步、云端怎么配。',
+      mcCapTitle: '能力自检',
+      mcCapHint: '按这台机器此刻的实际状态给出五行结论：能用的直接说能用，不能用的一行说清原因和怎么修。',
+      mcCheckAgain: '重新自检',
+      mcChecking: '正在自检…（最多几秒）',
+      mcCapNoReport: '还没自检过。点「重新自检」看看这台机器现在能做什么。',
+      mcCapStale: '下面是上次自检留下的结果，可能已经过时。',
+      mcCapCheckedAt: '上次自检',
+      mcCapSaveFailed: '自检结果没能写入磁盘（不影响使用）：',
+      mcCapCloud: '云端识别',
+      mcCapPython: 'Word/Excel 导出（Python）',
+      mcPrepare: '准备模型',
+      mcPreparing: '已请求准备，稍后回来看看',
+      mcRepairUnavailable: '这一项不能一键修：按上面的提示处理后，再点「重新自检」。',
+      mcCapReady: '可用',
+      mcLocalEmpty: '这一类还没有可用的模型。',
+      mcCloudAsrTitle: '云端语音识别',
+      mcCloudAsrHint: '这里决定「一段音频发到哪里识别」。默认不出本机：只有勾了同意、并且识别方式不是「只用本地」时，请求才会发出。',
+      mcPreset: '服务商预设',
+      mcPresetCustom: '自定义',
+      mcKeyKept: '已保存，留空不变',
+      mcHostLabel: '音频将发往',
+      mcRetentionLabel: '远端留存',
+      mcRetentionNone: '请求声明不保留（retention=none）',
+      mcRetentionKept: '允许远端留存音频',
+      mcFallbackLabel: '失败时的回退',
+      mcKeepRemote: '允许云端留存音频（默认不允许）',
+      mcKeepRemoteHint: '打开后请求里不再声明不保留；会议录音属于敏感内容，只在服务商明确要求留存时再打开。',
+      mcStripPrefix: '去掉句首的说话人前缀',
+      mcStripPrefixHint: '有的云端识别会在文字前加「1: 」「SPEAKER_00:」。打开后写入实录前会去掉；原文另存在 cloudText 里备查，本地识别结果不受影响。',
+      mcAsrTest: '测试连接',
+      mcTesting: '测试中…',
+      mcTestNeedsConsent: '先勾选下面的同意项，才能测试连接（测试会真发一段 1 秒静音音频）。',
+      mcTestNeedsMode: '识别方式现在是「只用本地」，测试不会发出任何请求；先把识别方式切到云端。',
+      mcTestUsesSaved: '测试用的是已保存的设置：改了字段先保存，再测试。',
+      mcNoTest: '还没有测试过：勾选同意后点「测试连接」。',
+      mcTestResult: '测试结果',
+      mcTestNoRequest: '未发出请求',
+      mcHttpLabel: 'HTTP / 耗时',
+      mcCapProbe: '能力探测',
+      mcYes: '支持',
+      mcNo: '不支持',
+      mcUnknown: '未知',
+      mcVerdict: '结论',
+      mcVerdictOk: '可用',
+      mcVerdictDegraded: '需要降级',
+      mcVerdictFail: '不可用',
+      mcDestination: '发往',
+      mcProbeSeconds: '探测音频',
+      mcAttempts: '尝试',
+      mcReason: '原因',
+      mcRetainedYes: '允许留存',
+      mcRetainedNo: '不保留',
+      mcLlmTitle: '云端纪要 LLM',
+      mcLlmHint: '生成纪要时可以改用这个模型，只用 OpenAI 兼容的 /chat/completions。不配置时行为不变，仍由当前会话的模型生成。',
+      mcLlmTest: '测试 LLM',
+      mcSaveLlm: '保存 LLM 设置',
+      mcSpeakerEmbedTitle: '声纹 embedding（可选）',
+      mcSpeakerEmbedHint: '把声音变成向量来自动标出发言人。大多数会议用本机的 3D-Speaker 就够；这里只在你已经有云端声纹服务时填写。',
+      mcMigratedNotice: '云端配置已迁移到「模型中心」，这里仅显示。',
     }
 
     const en = {
@@ -1005,6 +1066,67 @@ registerProcessor('meeting-capture', MeetingCapture)
       prepareInPanel: 'Download local models',
       preparingInPanel: 'Preparing\u2026',
       preparedInPanel: 'Models ready',
+      hubTabModelCenter: 'Model center',
+      mcIntro: 'Model center gathers three things: what this machine can do right now, how far the local models are installed, and how the cloud is configured.',
+      mcCapTitle: 'Capability self-check',
+      mcCapHint: 'Five honest rows about this machine as it is right now: what works, and for the rest one line on why and how to fix it.',
+      mcCheckAgain: 'Run self-check again',
+      mcChecking: 'Checking\u2026 (a few seconds)',
+      mcCapNoReport: 'No self-check yet. Choose "Run self-check again" to see what this machine can do right now.',
+      mcCapStale: 'This is the last saved result and may be out of date.',
+      mcCapCheckedAt: 'Last checked',
+      mcCapSaveFailed: 'The report could not be written to disk (harmless):',
+      mcCapCloud: 'Cloud recognition',
+      mcCapPython: 'Word/Excel export (Python)',
+      mcPrepare: 'Prepare model',
+      mcPreparing: 'Preparation requested \u2014 come back shortly',
+      mcRepairUnavailable: 'This one cannot be fixed by a click: follow the hint above, then run the self-check again.',
+      mcCapReady: 'ready',
+      mcLocalEmpty: 'No model of this kind yet.',
+      mcCloudAsrTitle: 'Cloud speech recognition',
+      mcCloudAsrHint: 'This decides where a cue is sent for recognition. Nothing leaves this machine by default: a request goes out only after consent is ticked and the mode is not "local only".',
+      mcPreset: 'Provider preset',
+      mcPresetCustom: 'Custom',
+      mcKeyKept: 'saved; leave blank to keep',
+      mcHostLabel: 'Audio would go to',
+      mcRetentionLabel: 'Remote retention',
+      mcRetentionNone: 'the request declares no retention (retention=none)',
+      mcRetentionKept: 'the service may retain the audio',
+      mcFallbackLabel: 'On failure',
+      mcKeepRemote: 'Allow the service to keep the audio (off by default)',
+      mcKeepRemoteHint: 'With this on the request no longer declares "do not retain". Meeting audio is sensitive; turn it on only when the provider requires retention.',
+      mcStripPrefix: 'Strip the speaker prefix at the start of a sentence',
+      mcStripPrefixHint: 'Some services prefix text with "1: " or "SPEAKER_00:". With this on it is removed before the text reaches the transcript; the literal answer is kept aside as cloudText, and local recognition is untouched.',
+      mcAsrTest: 'Test connection',
+      mcTesting: 'Testing\u2026',
+      mcTestNeedsConsent: 'Tick the consent box below before testing \u2014 the test really sends one second of silent audio.',
+      mcTestNeedsMode: 'The mode is "local only", so the test would send nothing. Switch the mode to cloud first.',
+      mcTestUsesSaved: 'The test uses the saved settings: save first if you changed a field.',
+      mcNoTest: 'Not tested yet: tick consent, then choose "Test connection".',
+      mcTestResult: 'Test result',
+      mcTestNoRequest: 'No request was sent',
+      mcHttpLabel: 'HTTP / time',
+      mcCapProbe: 'Capability probe',
+      mcYes: 'yes',
+      mcNo: 'no',
+      mcUnknown: 'unknown',
+      mcVerdict: 'Verdict',
+      mcVerdictOk: 'Usable',
+      mcVerdictDegraded: 'Needs a fallback',
+      mcVerdictFail: 'Not usable',
+      mcDestination: 'Sent to',
+      mcProbeSeconds: 'Probe audio',
+      mcAttempts: 'Attempts',
+      mcReason: 'Reason',
+      mcRetainedYes: 'may be retained',
+      mcRetainedNo: 'not retained',
+      mcLlmTitle: 'Cloud minutes LLM',
+      mcLlmHint: 'Minutes can be written by this model instead; it uses an OpenAI-compatible /chat/completions. When it is off nothing changes and the conversation model still writes them.',
+      mcLlmTest: 'Test LLM',
+      mcSaveLlm: 'Save LLM settings',
+      mcSpeakerEmbedTitle: 'Speaker embeddings (optional)',
+      mcSpeakerEmbedHint: 'Turns a voice into a vector so speakers can be labelled automatically. The on-machine 3D-Speaker covers most meetings; fill this in only when you already have a cloud embedding service.',
+      mcMigratedNotice: 'Cloud settings have moved to Model center; this page only displays them.',
     }
 
     const styles = {
@@ -2191,8 +2313,103 @@ function periodBucketOf(startedAt, unit) {
     ]
 
     /** Hub sections, in the order a user meets them. */
-    const HUB_TAB_VALUES = ['records', 'models', 'terms', 'settings', 'people']
-    const HUB_TAB_KEYS = { records: 'hubTabRecords', models: 'hubTabModels', terms: 'hubTabTerms', settings: 'hubTabSettings', people: 'hubTabPeople' }
+    const HUB_TAB_VALUES = ['records', 'models', 'model-center', 'terms', 'settings', 'people']
+    const HUB_TAB_KEYS = { records: 'hubTabRecords', models: 'hubTabModels', 'model-center': 'hubTabModelCenter', terms: 'hubTabTerms', settings: 'hubTabSettings', people: 'hubTabPeople' }
+
+    /**
+     * Model center: the five rows the host's self-check reports, in the order it reports
+     * them, and the label each row wears. Everything else about a row (state, why, how to
+     * fix it) is the host's answer, rendered as it arrives.
+     */
+    const MC_CHECK_IDS = ['asr', 'speaker', 'handwriting', 'cloud', 'python']
+    const MC_CHECK_LABEL_KEYS = {
+      asr: 'modelKindAsr',
+      speaker: 'modelKindSpeaker',
+      handwriting: 'modelKindHandwriting',
+      cloud: 'mcCapCloud',
+      python: 'mcCapPython',
+    }
+    /** Self-check actions that mean "download what is missing": only these get a button. */
+    const MC_REPAIR_ACTIONS = ['prepare-asr', 'prepare-speaker', 'prepare-handwriting']
+    /** The local model groups the model center lists; other kinds stay on the 模型 page. */
+    const MC_MODEL_KINDS = [
+      ['asr', 'modelKindAsr'],
+      ['speaker', 'modelKindSpeaker'],
+      ['handwriting', 'modelKindHandwriting'],
+    ]
+    /**
+     * A self-check row's lamp: green when it works, amber when a click or a wait may fix it,
+     * red when only manual work will. Theme variables first, literals as the fallback so the
+     * dot is never invisible.
+     */
+    const MC_LAMP = {
+      ready: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-success-primary, #3fb950)' },
+      warn: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-warning-primary, #d29922)' },
+      bad: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--dsw-alias-state-error-primary, #d9534f)' },
+    }
+    /** States a person can still fix by waiting or clicking "prepare". */
+    const MC_WARN_STATES = ['preparing', 'needs-consent', 'incomplete', 'fallback', 'not-downloaded']
+    /** The model center's cards stack with the same air as the page's own sections. */
+    const MC_STACK = { display: 'flex', flexDirection: 'column', gap: '14px' }
+
+    /**
+     * The lamp for one self-check row: green when it works, amber while it is still
+     * recoverable, red when it needs a person. An unknown row is red — silence is not "ready".
+     * @param row - one `checks` entry from the host report.
+     * @returns a style object for the dot.
+     */
+    function mcLampOf(row) {
+      if (row?.ok === true) return MC_LAMP.ready
+      return MC_WARN_STATES.includes(row?.state) ? MC_LAMP.warn : MC_LAMP.bad
+    }
+
+    /**
+     * The host of a URL, for the "where would this audio go" line. A malformed address
+     * yields '' instead of throwing: the field is typed into, so half a URL is normal.
+     * @param value - the URL as typed.
+     * @returns the host, or '' when it does not parse.
+     */
+    function mcHostOf(value) {
+      try {
+        return new URL(String(value ?? '')).host
+      } catch {
+        return ''
+      }
+    }
+
+    /**
+     * The provider preset whose base URL matches, ignoring a trailing slash.
+     * @param presets - presets from `GET /cloud`.
+     * @param baseUrl - the address in the field.
+     * @returns the matching preset, or null for a hand-typed address.
+     */
+    function mcPresetFor(presets, baseUrl) {
+      const target = String(baseUrl ?? '').replace(/\/+$/, '')
+      if (target === '') return null
+      return presets.find((preset) => String(preset.baseUrl ?? '').replace(/\/+$/, '') === target) ?? null
+    }
+
+    /**
+     * Which verdict badge a test result earns. A successful degraded attempt still needs the
+     * fallback, so it is not painted as plain "usable".
+     * @param part - the `asr` or `llm` part of `POST /cloud/test`.
+     * @returns the locale key of the badge.
+     */
+    function mcVerdictKey(part) {
+      if (part?.ok === true) return part.degraded === true ? 'mcVerdictDegraded' : 'mcVerdictOk'
+      return 'mcVerdictFail'
+    }
+
+    /**
+     * The colour of a verdict badge, so it reads the same way as the self-check lamps.
+     * @param part - the `asr` or `llm` part of `POST /cloud/test`.
+     * @returns a CSS colour for the badge text.
+     */
+    function mcVerdictColor(part) {
+      const key = mcVerdictKey(part)
+      if (key === 'mcVerdictOk') return MC_LAMP.ready.background
+      return key === 'mcVerdictDegraded' ? MC_LAMP.warn.background : MC_LAMP.bad.background
+    }
 
     /** Panel body sections: the record first, then what was read out of it. */
     const BODY_TAB_VALUES = ['transcript', 'minutes', 'points', 'tasks', 'names']
@@ -6466,9 +6683,38 @@ function periodBucketOf(startedAt, unit) {
        * being edited. A blank key field means "leave the stored one alone".
        */
       const [cloud, setCloud] = React.useState({ consent: false, asr: {}, speaker: {}, state: {} })
-      const [cloudDraft, setCloudDraft] = React.useState({ consent: false, mode: 'local', provider: 'off', baseUrl: '', model: '', language: '', apiKey: '' })
+      const [cloudDraft, setCloudDraft] = React.useState({
+        consent: false,
+        mode: 'local',
+        provider: 'off',
+        baseUrl: '',
+        model: '',
+        language: '',
+        apiKey: '',
+        keepRemote: false,
+        stripSpeakerPrefix: true,
+      })
       const [cloudNote, setCloudNote] = React.useState('')
       const [cloudBusy, setCloudBusy] = React.useState(false)
+      /**
+       * The model center's own state: the minutes LLM draft, the provider presets, the last
+       * self-check report and the last connection test. None of it duplicates the model
+       * catalog above — that state and its actions are shared with the 模型 page.
+       */
+      const [llmDraft, setLlmDraft] = React.useState({ provider: 'off', baseUrl: '', model: '', apiKey: '' })
+      const [cloudSpeakerDraft, setCloudSpeakerDraft] = React.useState({ provider: 'off', baseUrl: '', model: '', apiKey: '' })
+      const [mcPresets, setMcPresets] = React.useState([])
+      const [mcPreset, setMcPreset] = React.useState('')
+      const [capabilities, setCapabilities] = React.useState({ report: null, path: '', saved: false, error: '', stale: true })
+      const [capBusy, setCapBusy] = React.useState(false)
+      const [capError, setCapError] = React.useState('')
+      const [capNote, setCapNote] = React.useState('')
+      const [capRepairing, setCapRepairing] = React.useState('')
+      /** The last `POST /cloud/test` reply (asr and llm parts), or null before the first test. */
+      const [mcTest, setMcTest] = React.useState(null)
+      const [mcTestBusy, setMcTestBusy] = React.useState('')
+      const [mcTestError, setMcTestError] = React.useState('')
+
       /**
        * Speaker recognition: the clustering threshold, whether the end-of-meeting pass covers
        * every cue, and the voice library (names and evidence only — vectors never arrive here).
@@ -6672,11 +6918,17 @@ function periodBucketOf(startedAt, unit) {
 
       React.useEffect(() => { void refresh() }, [refresh])
 
-      /** Read the cloud summary and seed the fields with it (the key stays blank by design). */
+      /**
+       * Read the cloud summary and seed the fields with it (the key stays blank by design).
+       * Also seeds the model center's LLM and speaker-embedding drafts and its preset list;
+       * a host that does not report those yet simply yields empty ones, never a crash.
+       */
       const loadCloud = React.useCallback(async () => {
         try {
           const value = await get('/cloud')
+          const presets = Array.isArray(value.presets) ? value.presets : []
           setCloud(value)
+          setMcPresets(presets)
           setCloudDraft({
             consent: value.consent === true,
             mode: CLOUD_MODE_VALUES.includes(value.mode) ? value.mode : 'local',
@@ -6685,7 +6937,24 @@ function periodBucketOf(startedAt, unit) {
             model: value.asr?.model ?? '',
             language: value.asr?.language ?? '',
             apiKey: '',
+            // Old hosts omit both: keep the documented defaults rather than `undefined`.
+            keepRemote: value.asr?.keepRemote === true,
+            stripSpeakerPrefix: value.asr?.stripSpeakerPrefix !== false,
           })
+          setLlmDraft({
+            provider: CLOUD_PROVIDER_VALUES.includes(value.llm?.provider) ? value.llm.provider : 'off',
+            baseUrl: value.llm?.baseUrl ?? '',
+            model: value.llm?.model ?? '',
+            apiKey: '',
+          })
+          setCloudSpeakerDraft({
+            provider: CLOUD_PROVIDER_VALUES.includes(value.speaker?.provider) ? value.speaker.provider : 'off',
+            baseUrl: value.speaker?.baseUrl ?? '',
+            model: value.speaker?.model ?? '',
+            apiKey: '',
+          })
+          const matched = mcPresetFor(presets, value.asr?.baseUrl ?? '')
+          setMcPreset(matched === null ? '' : matched.id)
         } catch (failure) {
           setError(failure instanceof Error ? failure.message : String(failure))
         }
@@ -6771,7 +7040,11 @@ function periodBucketOf(startedAt, unit) {
         }
       }, [loadSpeakerSettings])
 
-      /** Store the cloud settings. An empty key field leaves the stored key untouched. */
+      /**
+       * Store the cloud settings. An empty key field leaves the stored key untouched; the
+       * model center's LLM and speaker-embedding drafts travel in the same patch so both
+       * cards save through one call instead of two half-written states.
+       */
       const saveCloud = React.useCallback(async () => {
         setError('')
         setCloudNote('')
@@ -6782,9 +7055,23 @@ function periodBucketOf(startedAt, unit) {
             baseUrl: cloudDraft.baseUrl,
             model: cloudDraft.model,
             language: cloudDraft.language,
+            keepRemote: cloudDraft.keepRemote === true,
+            stripSpeakerPrefix: cloudDraft.stripSpeakerPrefix !== false,
           }
           if (cloudDraft.apiKey !== '') asr.apiKey = cloudDraft.apiKey
-          await post('/cloud', { consent: cloudDraft.consent, mode: cloudDraft.mode, asr })
+          const llm = {
+            provider: llmDraft.provider,
+            baseUrl: llmDraft.baseUrl,
+            model: llmDraft.model,
+          }
+          if (llmDraft.apiKey !== '') llm.apiKey = llmDraft.apiKey
+          const speaker = {
+            provider: cloudSpeakerDraft.provider,
+            baseUrl: cloudSpeakerDraft.baseUrl,
+            model: cloudSpeakerDraft.model,
+          }
+          if (cloudSpeakerDraft.apiKey !== '') speaker.apiKey = cloudSpeakerDraft.apiKey
+          await post('/cloud', { consent: cloudDraft.consent, mode: cloudDraft.mode, asr, llm, speaker })
           setCloudNote(t('cloudSaved'))
           await loadCloud()
         } catch (failure) {
@@ -6792,7 +7079,7 @@ function periodBucketOf(startedAt, unit) {
         } finally {
           setCloudBusy(false)
         }
-      }, [cloudDraft, loadCloud, t])
+      }, [cloudDraft, cloudSpeakerDraft, llmDraft, loadCloud, t])
 
       /** Ask the host to try the configured service once — a tenth of a second of silence. */
       const runCloudTest = React.useCallback(async () => {
@@ -6811,14 +7098,94 @@ function periodBucketOf(startedAt, unit) {
         }
       }, [loadCloud, t])
 
+      /**
+       * Read the capability report. The plain read is cheap and never downloads anything;
+       * `refresh` makes the host probe the machine again, which is what the button does.
+       * @param refresh - whether to re-probe instead of reading the saved report.
+       */
+      const loadCapabilities = React.useCallback(async (refresh = false) => {
+        setCapError('')
+        setCapBusy(true)
+        try {
+          const value = await get(`/capabilities${refresh === true ? '?refresh=1' : ''}`)
+          setCapabilities({
+            report: value.report !== null && typeof value.report === 'object' ? value.report : null,
+            path: typeof value.path === 'string' ? value.path : '',
+            saved: value.saved === true,
+            error: typeof value.error === 'string' ? value.error : '',
+            // A host that never ran the checks reports `stale`; a missing field is treated as
+            // stale too, because an unlabelled old report is still old.
+            stale: value.stale !== false,
+          })
+          if (refresh === true) setCapNote('')
+        } catch (failure) {
+          // A missing route is not "everything is ready": keep the empty report and say so.
+          setCapabilities({ report: null, path: '', saved: false, error: '', stale: true })
+          setCapError(failure instanceof Error ? failure.message : String(failure))
+        } finally {
+          setCapBusy(false)
+        }
+      }, [])
+
+      /**
+       * Ask the host to start downloading the model behind one check row. Only the three
+       * "prepare" actions are executable; the host refuses everything else and the guidance
+       * already on the row is the answer.
+       * @param action - prepare-asr / prepare-speaker / prepare-handwriting.
+       */
+      const repairCapabilityNow = React.useCallback(async (action) => {
+        setCapError('')
+        setCapNote('')
+        setCapRepairing(action)
+        try {
+          const reply = await post('/capabilities/repair', { action })
+          setCapNote(typeof reply.message === 'string' && reply.message !== '' ? reply.message : t('mcPreparing'))
+          // A download takes minutes; re-reading once shortly after is enough to show the
+          // row's phase change, and the button stays available for a manual re-check.
+          window.setTimeout(() => { void loadCapabilities(false) }, 1500)
+        } catch (failure) {
+          setCapError(failure instanceof Error ? failure.message : String(failure))
+        } finally {
+          setCapRepairing('')
+        }
+      }, [loadCapabilities, t])
+
+      /**
+       * Run one connection test. Both cards read the same reply: `asr` fills the speech
+       * card, `llm` the minutes card, and whichever button was pressed is the one disabled.
+       * @param which - 'asr' or 'llm', for the button's own busy state.
+       */
+      const runCloudTestNow = React.useCallback(async (which) => {
+        setMcTestError('')
+        setMcTestBusy(which)
+        try {
+          const reply = await post('/cloud/test', {})
+          setMcTest(reply !== null && typeof reply === 'object' ? reply : {})
+          // The host writes the detected capability back; re-reading shows the saved state,
+          // including a key prompt change, without another probe.
+          await loadCloud()
+        } catch (failure) {
+          setMcTestError(failure instanceof Error ? failure.message : String(failure))
+        } finally {
+          setMcTestBusy('')
+        }
+      }, [loadCloud])
+
       React.useEffect(() => {
         // Cloud recognition lives on 模型 now, but its saved state is shared: read it
         // whenever either page opens so both show the same answer.
-        if (hubTab === 'settings' || hubTab === 'models') void loadCloud()
+        if (hubTab === 'settings' || hubTab === 'models' || hubTab === 'model-center') void loadCloud()
         if (hubTab !== 'settings') return
         void loadSpeakerSettings()
         void loadTranscript()
       }, [hubTab, loadCloud, loadSpeakerSettings, loadTranscript])
+
+      // The saved report is cheap to read, so the model center shows the last answer as soon
+      // as it opens; probing is the button's job, never a page-open side effect.
+      React.useEffect(() => {
+        if (hubTab !== 'model-center') return
+        void loadCapabilities(false)
+      }, [hubTab, loadCapabilities])
 
       /** Read the model catalog and what is on disk. */
       const loadModels = React.useCallback(async () => {
@@ -6837,7 +7204,9 @@ function periodBucketOf(startedAt, unit) {
       }, [])
 
       React.useEffect(() => {
-        if (hubTab === 'models') void loadModels()
+        // The 模型 page and the model center share this one catalog read; neither keeps a
+        // second copy of the state or of the row actions.
+        if (hubTab === 'models' || hubTab === 'model-center') void loadModels()
       }, [hubTab, loadModels])
 
       // A model download runs for minutes, so the page polls while one is in flight — the
@@ -7163,6 +7532,414 @@ function periodBucketOf(startedAt, unit) {
         ]),
       ])
 
+      /**
+       * The model center: four cards in a fixed order — what this machine can do, which
+       * local models are installed, the cloud speech service, the cloud minutes model.
+       *
+       * It owns no model state of its own: the catalog, the install/import/activate/remove
+       * actions and the row component are the 模型 page's, shared through `renderModelRow`.
+       * Everything else here is a view over the cloud summary and the capability report, and
+       * every failure lands in a visible line instead of the console.
+       * @returns the tab body.
+       */
+      const renderModelCenter = () => {
+        const report = capabilities.report
+        const checks = report !== null && report.checks !== null && typeof report.checks === 'object' ? report.checks : {}
+        const readyCount = MC_CHECK_IDS.filter((id) => checks[id]?.ok === true).length
+        // The preset the typed address belongs to, if any: it decides the model candidates.
+        const preset = mcPresetFor(mcPresets, cloudDraft.baseUrl)
+        const asrModels = preset !== null && Array.isArray(preset.models) && preset.models.length > 0
+          ? preset.models
+          : [...new Set(mcPresets.flatMap((entry) => (Array.isArray(entry.models) ? entry.models : [])))]
+        const llmModels = preset !== null && Array.isArray(preset.llmModels) && preset.llmModels.length > 0
+          ? preset.llmModels
+          : [...new Set(mcPresets.flatMap((entry) => (Array.isArray(entry.llmModels) ? entry.llmModels : [])))]
+        // Where the audio would actually go: the address being edited wins over the saved
+        // one, because that is what the person believes they just configured.
+        const draftHost = mcHostOf(cloudDraft.baseUrl)
+        const destHost = draftHost !== '' ? draftHost : (typeof cloud.asr?.host === 'string' ? cloud.asr.host : '')
+        // Testing is an outgoing request: consent first, and a local mode would send nothing.
+        const testBlockReason = cloudDraft.consent !== true
+          ? 'mcTestNeedsConsent'
+          : cloudDraft.mode === 'local' ? 'mcTestNeedsMode' : ''
+        const fallbackHint = t(CLOUD_MODE_HINTS[cloudDraft.mode] ?? 'cloudModeLocalHint')
+        const capValue = (value) => (value === true ? t('mcYes') : value === false ? t('mcNo') : t('mcUnknown'))
+        const httpLine = (http) => (http === null || http === undefined
+          ? `${t('mcHttpLabel')}：${t('mcTestNoRequest')}`
+          : `${t('mcHttpLabel')}：${String(http.status ?? '—')} · ${String(http.ms ?? '—')}ms`)
+        const verdictBadge = (part) => h('span', {
+          key: 'verdict',
+          style: { ...styles.chip, fontWeight: 600, color: mcVerdictColor(part) },
+        }, `${t('mcVerdict')}：${t(mcVerdictKey(part))}`)
+        const reasonLine = (part) => {
+          const reason = typeof part?.reason === 'string' && part.reason !== '' ? part.reason : ''
+          const message = typeof part?.message === 'string' && part.message !== '' ? part.message : ''
+          if (reason === '' && message === '') return null
+          return h('span', { key: 'reason', style: styles.status }, `${t('mcReason')}：${reason === '' ? message : reason}`)
+        }
+        /** One self-check row: lamp, name, the host's sentence, its fix, and a button if it can be fixed. */
+        const renderCheckRow = (id) => {
+          const row = checks[id] !== undefined && checks[id] !== null && typeof checks[id] === 'object' ? checks[id] : null
+          const repair = row !== null && row.ok !== true && MC_REPAIR_ACTIONS.includes(row.action)
+          const manual = row !== null && typeof row.action === 'string' && row.action !== '' && !MC_REPAIR_ACTIONS.includes(row.action)
+          return h('div', { key: id, style: styles.list }, [
+            h('div', { key: 'head', style: styles.row }, [
+              h('span', {
+                key: 'lamp',
+                style: mcLampOf(row),
+                title: row === null ? t('mcUnknown') : String(row.state ?? ''),
+                'aria-hidden': 'true',
+              }),
+              h('span', { key: 'name', style: styles.label }, t(MC_CHECK_LABEL_KEYS[id])),
+              repair
+                ? h(Btn, {
+                  key: 'repair',
+                  type: 'button',
+                  style: styles.smallButton,
+                  disabled: capRepairing !== '',
+                  onClick: () => { void repairCapabilityNow(row.action) },
+                }, capRepairing === row.action ? t('mcPreparing') : t('mcPrepare'))
+                : null,
+            ]),
+            h('span', { key: 'message', style: styles.status }, row === null ? t('mcCapNoReport') : String(row.message ?? '')),
+            row !== null && typeof row.fix === 'string' && row.fix !== ''
+              ? h('span', { key: 'fix', style: styles.hint }, row.fix)
+              : null,
+            manual ? h('span', { key: 'manual', style: styles.hint }, t('mcRepairUnavailable')) : null,
+          ])
+        }
+
+        return h('div', { key: 'model-center', style: MC_STACK }, [
+          h('p', { key: 'intro', style: styles.subtitle }, t('mcIntro')),
+          // ---- 1. Capability self-check -------------------------------------------------
+          h('div', { key: 'capabilities', className: 'mr-card' }, [
+            h('div', { key: 'head', style: styles.row }, [
+              h('span', { key: 'label', style: styles.label }, t('mcCapTitle')),
+              h(Btn, {
+                key: 'again',
+                type: 'button',
+                style: styles.button,
+                disabled: capBusy || capRepairing !== '',
+                onClick: () => { void loadCapabilities(true) },
+              }, t('mcCheckAgain')),
+              capBusy ? h('span', { key: 'busy', style: styles.status }, t('mcChecking')) : null,
+              report === null ? null : h('span', { key: 'count', style: styles.stamp }, `${t('mcCapReady')} ${readyCount}/${MC_CHECK_IDS.length}`),
+            ]),
+            h('span', { key: 'hint', style: styles.hint }, t('mcCapHint')),
+            capError !== '' ? h('p', { key: 'error', style: styles.error }, `${t('error')}: ${capError}`) : null,
+            capNote === '' ? null : h('span', { key: 'note', style: styles.status }, capNote),
+            capabilities.error === '' ? null : h('span', { key: 'saveerror', style: styles.hint }, `${t('mcCapSaveFailed')}${capabilities.error}`),
+            report === null
+              ? h('span', { key: 'noreport', style: styles.status }, t('mcCapNoReport'))
+              : h('div', { key: 'rows', style: styles.list }, [
+                typeof report.checkedAt === 'number'
+                  ? h('span', { key: 'when', style: styles.note }, `${t('mcCapCheckedAt')}：${new Date(report.checkedAt).toLocaleString()}`)
+                  : null,
+                capabilities.stale ? h('span', { key: 'stale', style: styles.hint }, t('mcCapStale')) : null,
+                ...MC_CHECK_IDS.map(renderCheckRow),
+              ]),
+          ]),
+          // ---- 2. Local models ----------------------------------------------------------
+          h('div', { key: 'local-models', className: 'mr-card' }, [
+            h('div', { key: 'head', style: styles.row }, [
+              h('span', { key: 'label', style: styles.label }, t('modelsLocalTitle')),
+              h(Btn, { key: 'refresh', type: 'button', style: styles.button, onClick: () => { void loadModels() } }, t('hubRefresh')),
+            ]),
+            h('span', { key: 'hint', style: styles.hint }, t('modelsLocalHint')),
+            models.problem === '' ? null : h('p', { key: 'problem', style: styles.error }, models.problem),
+            models.install?.phase === 'downloading'
+              ? h('p', { key: 'progress', style: styles.note }, `${t('modelDownloading')} ${models.install.file} · ${models.install.total > 0 ? Math.min(100, Math.floor(models.install.received * 100 / models.install.total)) : 0}%`)
+              : null,
+            h('div', { key: 'groups', style: styles.list }, [
+              ...MC_MODEL_KINDS.flatMap(([kind, labelKey]) => {
+                const rows = models.models.filter((model) => model.kind === kind)
+                return [
+                  h('span', { key: `kind-${kind}`, style: styles.stamp }, t(labelKey)),
+                  ...(rows.length === 0
+                    ? [h('span', { key: `empty-${kind}`, style: styles.empty }, t('mcLocalEmpty'))]
+                    : rows.map(renderModelRow)),
+                ]
+              }),
+            ]),
+            h('span', { key: 'dir', style: styles.hint }, `${t('modelDirectory')}：${models.directory}`),
+            // The same hidden field the 模型 page uses: the row's import button clicks it.
+            h('input', {
+              key: 'modelfile',
+              type: 'file',
+              ref: modelField,
+              style: { display: 'none' },
+              onChange: (event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                const target = modelTarget.current
+                void importModelNow(target.id, target.name, file)
+              },
+            }),
+          ]),
+          // ---- 3. Cloud speech recognition ---------------------------------------------
+          h('div', { key: 'cloud-asr', className: 'mr-card' }, [
+            h('div', { key: 'head', style: styles.row }, [
+              h('span', { key: 'label', style: styles.label }, t('mcCloudAsrTitle')),
+            ]),
+            h('span', { key: 'hint', style: styles.hint }, t('mcCloudAsrHint')),
+            // The three fixed lines: who receives the audio, whether it may be kept, and what
+            // happens when the request fails. They follow the draft, not the saved state.
+            h('span', { key: 'dest', style: styles.status }, destHost === ''
+              ? `${t('mcHostLabel')}：${t('cloudNowhere')}`
+              : `${t('mcHostLabel')}：${destHost}`),
+            h('span', { key: 'retention', style: styles.status }, `${t('mcRetentionLabel')}：${cloudDraft.keepRemote === true ? t('mcRetentionKept') : t('mcRetentionNone')}`),
+            h('span', { key: 'fallback', style: styles.status }, `${t('mcFallbackLabel')}：${fallbackHint}`),
+            h('div', { key: 'mode', style: styles.row }, [
+              h('span', { key: 'label', style: styles.status }, t('cloudMode')),
+              h(Picker, {
+                key: 'select',
+                style: styles.inlineInput,
+                value: cloudDraft.mode,
+                onChange: (event) => setCloudDraft((draft) => ({ ...draft, mode: event.target.value })),
+              }, CLOUD_MODE_VALUES.map((value) => h('option', { key: value, value }, t(CLOUD_MODE_KEYS[value])))),
+            ]),
+            h('span', { key: 'modenow', style: styles.note }, `${t('cloudModeNow')}：${cloudModeInEffect}`),
+            h('div', { key: 'preset', style: styles.row }, [
+              h('span', { key: 'label', style: styles.status }, t('mcPreset')),
+              h(Picker, {
+                key: 'select',
+                style: styles.inlineInput,
+                value: mcPreset,
+                onChange: (event) => {
+                  const id = event.target.value
+                  setMcPreset(id)
+                  const entry = mcPresets.find((candidate) => candidate.id === id)
+                  if (entry === undefined) return
+                  setCloudDraft((draft) => ({
+                    ...draft,
+                    provider: 'openai-compatible',
+                    baseUrl: entry.baseUrl ?? '',
+                    model: (Array.isArray(entry.models) ? entry.models[0] : '') ?? draft.model,
+                  }))
+                },
+              }, [
+                h('option', { key: '__custom__', value: '' }, t('mcPresetCustom')),
+                ...mcPresets.map((entry) => h('option', { key: String(entry.id ?? entry.name ?? ''), value: String(entry.id ?? '') }, String(entry.name ?? entry.id ?? ''))),
+              ]),
+            ]),
+            h(Field, {
+              key: 'base',
+              style: styles.textarea,
+              placeholder: 'https://api.example.com/v1',
+              value: cloudDraft.baseUrl,
+              spellCheck: false,
+              onChange: (event) => setCloudDraft((draft) => ({ ...draft, baseUrl: event.target.value })),
+            }),
+            // A hand-typed model with the preset's names offered underneath: the service may
+            // add a model before this page learns about it, so typing is never locked out.
+            h('div', { key: 'model', style: styles.row }, [
+              h(Field, {
+                key: 'model',
+                list: 'meeting-room-mc-asr-models',
+                style: styles.inlineWide,
+                placeholder: `model${asrModels.length === 0 ? '' : `（如 ${asrModels.slice(0, 2).join(' / ')}）`}`,
+                value: cloudDraft.model,
+                spellCheck: false,
+                onChange: (event) => setCloudDraft((draft) => ({ ...draft, model: event.target.value })),
+              }),
+              h('datalist', { key: 'candidates', id: 'meeting-room-mc-asr-models' }, asrModels.map((name) => h('option', { key: name, value: name }))),
+            ]),
+            h(Field, {
+              key: 'language',
+              style: styles.textarea,
+              placeholder: 'language（如 zh，可留空）',
+              value: cloudDraft.language,
+              spellCheck: false,
+              onChange: (event) => setCloudDraft((draft) => ({ ...draft, language: event.target.value })),
+            }),
+            h(Field, {
+              key: 'key',
+              type: 'password',
+              style: styles.textarea,
+              placeholder: cloud.asr?.keySet === true ? t('mcKeyKept') : 'API Key',
+              value: cloudDraft.apiKey,
+              spellCheck: false,
+              onChange: (event) => setCloudDraft((draft) => ({ ...draft, apiKey: event.target.value })),
+            }),
+            h('div', { key: 'keep', style: styles.row }, [
+              h(Field, {
+                key: 'toggle',
+                type: 'checkbox',
+                checked: cloudDraft.keepRemote === true,
+                onChange: (event) => setCloudDraft((draft) => ({ ...draft, keepRemote: event.target.checked })),
+              }),
+              h('span', { key: 'label', style: styles.status }, t('mcKeepRemote')),
+            ]),
+            h('span', { key: 'keephint', style: styles.hint }, t('mcKeepRemoteHint')),
+            h('div', { key: 'strip', style: styles.row }, [
+              h(Field, {
+                key: 'toggle',
+                type: 'checkbox',
+                checked: cloudDraft.stripSpeakerPrefix !== false,
+                onChange: (event) => setCloudDraft((draft) => ({ ...draft, stripSpeakerPrefix: event.target.checked })),
+              }),
+              h('span', { key: 'label', style: styles.status }, t('mcStripPrefix')),
+            ]),
+            h('span', { key: 'striphint', style: styles.hint }, t('mcStripPrefixHint')),
+            h('div', { key: 'consent', style: styles.row }, [
+              h(Field, {
+                key: 'toggle',
+                type: 'checkbox',
+                checked: cloudDraft.consent,
+                onChange: (event) => setCloudDraft((draft) => ({ ...draft, consent: event.target.checked })),
+              }),
+              h('span', { key: 'label', style: styles.status }, t('cloudConsent')),
+            ]),
+            // Optional: cloud speaker embeddings. Folded away because the on-machine
+            // 3D-Speaker covers most meetings and this is the rare configuration.
+            h('details', { key: 'speaker', style: styles.list }, [
+              h('summary', { key: 'summary', style: styles.label }, t('mcSpeakerEmbedTitle')),
+              h('span', { key: 'hint', style: styles.hint }, t('mcSpeakerEmbedHint')),
+              h('div', { key: 'provider', style: styles.row }, [
+                h('span', { key: 'label', style: styles.status }, t('cloudProvider')),
+                h(Picker, {
+                  key: 'select',
+                  style: styles.inlineInput,
+                  value: cloudSpeakerDraft.provider,
+                  onChange: (event) => setCloudSpeakerDraft((draft) => ({ ...draft, provider: event.target.value })),
+                }, CLOUD_PROVIDER_VALUES.map((value) => h('option', { key: value, value }, t(CLOUD_PROVIDER_KEYS[value])))),
+              ]),
+              h(Field, {
+                key: 'base',
+                style: styles.textarea,
+                placeholder: 'https://api.example.com/v1',
+                value: cloudSpeakerDraft.baseUrl,
+                spellCheck: false,
+                onChange: (event) => setCloudSpeakerDraft((draft) => ({ ...draft, baseUrl: event.target.value })),
+              }),
+              h(Field, {
+                key: 'model',
+                style: styles.textarea,
+                placeholder: 'model（如 campplus）',
+                value: cloudSpeakerDraft.model,
+                spellCheck: false,
+                onChange: (event) => setCloudSpeakerDraft((draft) => ({ ...draft, model: event.target.value })),
+              }),
+              h(Field, {
+                key: 'key',
+                type: 'password',
+                style: styles.textarea,
+                placeholder: cloud.speaker?.keySet === true ? t('mcKeyKept') : 'API Key',
+                value: cloudSpeakerDraft.apiKey,
+                spellCheck: false,
+                onChange: (event) => setCloudSpeakerDraft((draft) => ({ ...draft, apiKey: event.target.value })),
+              }),
+            ]),
+            h('div', { key: 'actions', style: styles.row }, [
+              h(Btn, { key: 'save', type: 'button', style: styles.button, disabled: cloudBusy, onClick: () => { void saveCloud() } }, t('cloudSave')),
+              h(Btn, {
+                key: 'test',
+                type: 'button',
+                style: styles.button,
+                disabled: mcTestBusy !== '' || testBlockReason !== '',
+                title: testBlockReason === '' ? t('mcTestUsesSaved') : t(testBlockReason),
+                onClick: () => { void runCloudTestNow('asr') },
+              }, mcTestBusy === 'asr' ? t('mcTesting') : t('mcAsrTest')),
+              cloudNote === '' ? null : h('span', { key: 'note', style: styles.status }, cloudNote),
+            ]),
+            h('span', { key: 'testhint', style: styles.hint }, t('mcTestUsesSaved')),
+            testBlockReason === '' ? null : h('span', { key: 'blocked', style: styles.hint }, t(testBlockReason)),
+            mcTestError !== '' ? h('p', { key: 'testerror', style: styles.error }, `${t('error')}: ${mcTestError}`) : null,
+            mcTest === null
+              ? h('span', { key: 'notest', style: styles.hint }, t('mcNoTest'))
+              : h('div', { key: 'result', style: styles.list }, [
+                h('div', { key: 'head', style: styles.row }, [
+                  h('span', { key: 'label', style: styles.label }, t('mcTestResult')),
+                  verdictBadge(mcTest.asr),
+                ]),
+                h('span', { key: 'http', style: styles.status }, httpLine(mcTest.asr?.http)),
+                h('span', { key: 'verbose', style: styles.status }, `verbose_json：${capValue(mcTest.asr?.capability?.supportsVerboseJson)}`),
+                h('span', { key: 'segments', style: styles.status }, `segments：${capValue(mcTest.asr?.capability?.returnsSegments)}`),
+                h('span', { key: 'speaker', style: styles.status }, `speaker：${capValue(mcTest.asr?.capability?.returnsSpeaker)}`),
+                mcTest.asr?.destination !== null && typeof mcTest.asr?.destination === 'object'
+                  ? h('span', { key: 'destination', style: styles.note }, `${t('mcDestination')}：${String(mcTest.asr.destination.host ?? '—')} · ${mcTest.asr.destination.keepRemote === true ? t('mcRetainedYes') : t('mcRetainedNo')} · ${t('mcProbeSeconds')} ${String(mcTest.asr.destination.audioSeconds ?? '—')}s`)
+                  : null,
+                Array.isArray(mcTest.asr?.attempts) && mcTest.asr.attempts.length > 0
+                  ? h('span', { key: 'attempts', style: styles.note }, `${t('mcAttempts')}：${mcTest.asr.attempts.map((attempt) => `${String(attempt?.responseFormat ?? '')} ${String(attempt?.status ?? '—')} ${String(attempt?.ms ?? '—')}ms`).join(' / ')}`)
+                  : null,
+                reasonLine(mcTest.asr),
+              ]),
+          ]),
+          // ---- 4. Cloud minutes LLM ----------------------------------------------------
+          h('div', { key: 'cloud-llm', className: 'mr-card' }, [
+            h('div', { key: 'head', style: styles.row }, [
+              h('span', { key: 'label', style: styles.label }, t('mcLlmTitle')),
+            ]),
+            h('span', { key: 'hint', style: styles.hint }, t('mcLlmHint')),
+            h('div', { key: 'provider', style: styles.row }, [
+              h('span', { key: 'label', style: styles.status }, t('cloudProvider')),
+              h(Picker, {
+                key: 'select',
+                style: styles.inlineInput,
+                value: llmDraft.provider,
+                onChange: (event) => setLlmDraft((draft) => ({ ...draft, provider: event.target.value })),
+              }, CLOUD_PROVIDER_VALUES.map((value) => h('option', { key: value, value }, t(CLOUD_PROVIDER_KEYS[value])))),
+            ]),
+            h(Field, {
+              key: 'base',
+              style: styles.textarea,
+              placeholder: 'https://api.example.com/v1',
+              value: llmDraft.baseUrl,
+              spellCheck: false,
+              onChange: (event) => setLlmDraft((draft) => ({ ...draft, baseUrl: event.target.value })),
+            }),
+            h('div', { key: 'model', style: styles.row }, [
+              h(Field, {
+                key: 'model',
+                list: 'meeting-room-mc-llm-models',
+                style: styles.inlineWide,
+                placeholder: `model${llmModels.length === 0 ? '' : `（如 ${llmModels.slice(0, 2).join(' / ')}）`}`,
+                value: llmDraft.model,
+                spellCheck: false,
+                onChange: (event) => setLlmDraft((draft) => ({ ...draft, model: event.target.value })),
+              }),
+              h('datalist', { key: 'candidates', id: 'meeting-room-mc-llm-models' }, llmModels.map((name) => h('option', { key: name, value: name }))),
+            ]),
+            h(Field, {
+              key: 'key',
+              type: 'password',
+              style: styles.textarea,
+              placeholder: cloud.llm?.keySet === true ? t('mcKeyKept') : 'API Key',
+              value: llmDraft.apiKey,
+              spellCheck: false,
+              onChange: (event) => setLlmDraft((draft) => ({ ...draft, apiKey: event.target.value })),
+            }),
+            h('div', { key: 'actions', style: styles.row }, [
+              h(Btn, { key: 'save', type: 'button', style: styles.button, disabled: cloudBusy, onClick: () => { void saveCloud() } }, t('mcSaveLlm')),
+              h(Btn, {
+                key: 'test',
+                type: 'button',
+                style: styles.button,
+                disabled: mcTestBusy !== '' || testBlockReason !== '',
+                title: testBlockReason === '' ? t('mcTestUsesSaved') : t(testBlockReason),
+                onClick: () => { void runCloudTestNow('llm') },
+              }, mcTestBusy === 'llm' ? t('mcTesting') : t('mcLlmTest')),
+              cloudNote === '' ? null : h('span', { key: 'note', style: styles.status }, cloudNote),
+            ]),
+            testBlockReason === '' ? null : h('span', { key: 'blocked', style: styles.hint }, t(testBlockReason)),
+            mcTestError !== '' ? h('p', { key: 'testerror', style: styles.error }, `${t('error')}: ${mcTestError}`) : null,
+            mcTest === null || mcTest.llm === undefined || mcTest.llm === null
+              ? h('span', { key: 'notest', style: styles.hint }, t('mcNoTest'))
+              : h('div', { key: 'result', style: styles.list }, [
+                h('div', { key: 'head', style: styles.row }, [
+                  h('span', { key: 'label', style: styles.label }, t('mcTestResult')),
+                  verdictBadge(mcTest.llm),
+                ]),
+                h('span', { key: 'http', style: styles.status }, httpLine(mcTest.llm?.http)),
+                typeof mcTest.llm?.model === 'string' && mcTest.llm.model !== ''
+                  ? h('span', { key: 'model', style: styles.status }, `model：${mcTest.llm.model}`)
+                  : null,
+                reasonLine(mcTest.llm),
+              ]),
+          ]),
+        ])
+      }
+
       return h(Boundary, null, h('section', { style: styles.hub }, [
         h('h1', { key: 'title', style: styles.hubTitle }, t('hubTitle')),
         h('p', { key: 'intro', style: styles.subtitle }, t('hubIntro')),
@@ -7216,6 +7993,9 @@ function periodBucketOf(startedAt, unit) {
           // Cloud sits on the same page: choosing a recognition model is one decision, and
           // the local/cloud split is the first thing to make visible about it.
           h('span', { key: 'cloudhead', style: styles.label }, t('modelsCloudTitle')),
+          // Cloud configuration has one home now. The controls stay here so nobody's muscle
+          // memory breaks, but the note says where it actually lives before anything is edited.
+          h('span', { key: 'mcnotice', style: styles.note }, t('mcMigratedNotice')),
           h('span', { key: 'cloudhint', style: styles.hint }, t('modelsCloudHint')),
           // The switch comes before the fields: somebody deciding whether to use the cloud
           // should not have to fill in an address first.
@@ -7308,6 +8088,7 @@ function periodBucketOf(startedAt, unit) {
             },
           }),
         ]) : null,
+        hubTab === 'model-center' ? renderModelCenter() : null,
         hubTab === 'terms' ? h('div', { key: 'terms' }, [
           h('label', { key: 'label', style: styles.label, htmlFor: 'meeting-room-hub-terms' }, t('terms')),
           h('span', { key: 'hint', style: styles.hint }, t('termsHint')),
