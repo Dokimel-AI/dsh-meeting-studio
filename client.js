@@ -17,7 +17,10 @@
  * local model reliably gets wrong, and composes a correction request for the agent.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-meeting-room',
+  // The module id must be the package name: the shell loads a client bundle under its
+  // package's own identity, so a fork that renames the package and keeps the upstream id
+  // is served but never executed (no error, no interface).
+  id: 'dsh-meeting-studio',
   factory(require) {
     const React = require('react')
     const h = React.createElement
@@ -38,7 +41,7 @@ window.__ModuleLoader__.load({
     const NS = 'meetingRoom'
 
     /** Tab implementation identity; the body and title register under it. */
-    const TAB_ID = 'dsh-meeting-room'
+    const TAB_ID = 'dsh-meeting-studio'
 
     /** Tab type discriminator used by `sidebarRight.openTab`. */
     const TAB_KIND = 'meeting-room'
@@ -204,7 +207,7 @@ registerProcessor('meeting-capture', MeetingCapture)
       hubImportHint: '选择之前导出的会议压缩包（.zip），把它导入本机',
       hubImported: '已导入会议',
       about: '关于',
-      aboutName: 'dsh-meeting-room · 会议记录（DeepSeek Harness 插件）',
+      aboutName: 'dsh-meeting-studio · 会议记录（DeepSeek Harness 插件）',
       aboutVersion: '版本',
       aboutAuthor: '作者',
       aboutLab: '博尔塔拉融媒体中心媒体传播与认知重点实验室',
@@ -695,7 +698,7 @@ registerProcessor('meeting-capture', MeetingCapture)
       hubImportHint: 'Choose a meeting archive (.zip) exported earlier and bring it into this machine',
       hubImported: 'Imported meeting',
       about: 'About',
-      aboutName: 'dsh-meeting-room · meeting notes for DeepSeek Harness',
+      aboutName: 'dsh-meeting-studio · meeting notes for DeepSeek Harness',
       aboutVersion: 'Version',
       aboutAuthor: 'Author',
       aboutLab: 'Key Laboratory of Media Communication and Cognition, Bortala Media Centre',
@@ -2799,7 +2802,7 @@ function periodBucketOf(startedAt, unit) {
             if (!live) return
             setAbout({
               version: typeof value.version === 'string' ? value.version : '',
-              name: typeof value.name === 'string' ? value.name : 'dsh-meeting-room',
+              name: typeof value.name === 'string' ? value.name : 'dsh-meeting-studio',
               author: typeof value.author === 'string' ? value.author : '',
             })
           } catch {
@@ -5626,7 +5629,7 @@ function periodBucketOf(startedAt, unit) {
               type: 'button',
               style: styles.button,
               onClick: () => {
-                const subject = encodeURIComponent(`dsh-meeting-room ${about.version === '' ? '' : about.version} 反馈`)
+                const subject = encodeURIComponent(`dsh-meeting-studio ${about.version === '' ? '' : about.version} 反馈`)
                 window.open(`mailto:${ABOUT_EMAIL}?subject=${subject}`, '_blank')
               },
             }, `${t('aboutMail')} ${ABOUT_EMAIL}`),
@@ -9032,7 +9035,7 @@ function periodBucketOf(startedAt, unit) {
           name: 'sidebar.panellist', id: PANEL_ID, order: 20, locale: NS, label: () => t('hubTitle'),
         }, MeetingPanelIcon))
         try {
-          ctx.slots.inject('plugins.bundle.activation', () => ctx.slots.register({ name: 'plugins.bundle.activation', key: 'dsh-meeting-room', locale: NS }, SetupNotice))
+          ctx.slots.inject('plugins.bundle.activation', () => ctx.slots.register({ name: 'plugins.bundle.activation', key: 'dsh-meeting-studio', locale: NS }, SetupNotice))
         } catch (error) {
           // The activation guidance slot is declared by the plugin manager; if it is
           // ever unavailable, the rest of the plugin must still load.

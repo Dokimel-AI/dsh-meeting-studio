@@ -57,20 +57,21 @@
     "DESIGN.md",
     "FEATURES.md",
     "TESTING.md",
-    "smoke.mjs"
+    "smoke.mjs",
+    "tools/*.mjs"
   ],
   "license": "MIT",
   "dependencies": {
     "onnxruntime-node": "1.20.1",
     "pinyin-pro": "^3.27.0"
   },
-  "peerDependencies": {
+  "optionalDependencies": {
     "sherpa-onnx-node": "1.13.8"
   },
-  "peerDependenciesMeta": {
-    "sherpa-onnx-node": {
-      "optional": true
-    }
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "onnxruntime-node"
+    ]
   },
   "engines": {
     "node": ">=20",
@@ -84,13 +85,11 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-workspace",
         "@deepseek-ai/dsh-client-ui-plugin-manager"
       ]
