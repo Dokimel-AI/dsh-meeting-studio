@@ -976,6 +976,113 @@ check('会议记录不落 embedding 与质心', !packedRecord.includes('embeddin
 check('会议记录仍保留发言人姓名与标签', packedRecord.includes('张三') && packedRecord.includes('S1'))
 
 // ---------------------------------------------------------------------------
+// 7g-2. 声纹合并：平均连接（不是单链接）、两个阈值分家、塌成一个时必须看得出来
+// ---------------------------------------------------------------------------
+// 两个阈值是两件事：在线「这条 cue 像不像现有声纹」与收尾「这两个声纹是不是同一个人」。
+// 共用一个数字时，调紧在线阈值会静默改掉最后一次合并（实测 0.7 让塌缩更严重）。
+const speakerSplit = await call('/speaker/settings', { threshold: 0.75 }, 'POST')
+check('合并阈值与在线阈值分开保存（调一个不改另一个）', speakerSplit.status === 200
+  && speakerSplit.value.speaker.threshold === 0.75
+  && speakerSplit.value.speaker.mergeThreshold === 0.62,
+  JSON.stringify(speakerSplit.value.speaker))
+const mergeOnly = await call('/speaker/settings', { mergeThreshold: 0.5 }, 'POST')
+check('合并阈值可单独写入，且不会重启发言人进程', mergeOnly.value.speaker.mergeThreshold === 0.5
+  && mergeOnly.value.speaker.threshold === 0.75
+  && mergeOnly.value.restarted === false)
+check('合并阈值越界被夹回合法区间', (await call('/speaker/settings', { mergeThreshold: 5 }, 'POST')).value.speaker.mergeThreshold <= 0.95)
+await call('/speaker/settings', { threshold: 0.6, mergeThreshold: 0.62 }, 'POST')
+
+/** 8 维向量：与客户端的 encodeVector 同一种编码。 */
+const vector8 = (...values) => {
+  const out = new Array(8).fill(0)
+  values.forEach((value, index) => { out[index] = value })
+  return out
+}
+const cueOf = (speaker, vector, index) => ({
+  id: `c${index}`, start: index * 4, end: index * 4 + 3.5, text: '发言', speaker, embedding: encodeVector(vector),
+})
+// 两个人之间余弦 0.29；「同时含两个人声音」的一段对两把声音都是 0.80。单链接会被这一段桥接成
+// 一类（13.8 分钟真人访谈就是这样塌成一个的），平均连接只让它并入其中一把，另一把不受影响。
+const personA = vector8(1, 0.15)
+const personB = vector8(0.15, 1)
+const bothVoices = vector8(0.575, 0.575)
+const bridgeMeeting = seed('m-merge-bridge', {
+  segments: [
+    cueOf('S1', personA, 0),
+    cueOf('S2', personB, 1),
+    cueOf('S1', vector8(1.02, 0.13), 2),
+    cueOf('S2', vector8(0.13, 0.98), 3),
+    cueOf('S3', bothVoices, 4),
+    cueOf('S1', vector8(0.98, 0.17), 5),
+    cueOf('S2', vector8(0.17, 1.01), 6),
+  ],
+  speakerLabels: ['S1', 'S2', 'S3'],
+})
+const bridgeMerge = tools.relabelSpeakers(bridgeMeeting, { threshold: 0.62 })
+check('同时含两个人声音的一段不会把两个声纹串成一类（平均连接）', bridgeMerge.voices === 2
+  && bridgeMeeting.segments[0].speaker === bridgeMeeting.segments[2].speaker
+  && bridgeMeeting.segments[1].speaker === bridgeMeeting.segments[3].speaker
+  && bridgeMeeting.segments[0].speaker !== bridgeMeeting.segments[1].speaker,
+  JSON.stringify(bridgeMerge.clusters))
+check('合并报告给出前后簇数、每簇段数与时长、最大合并相似度', bridgeMerge.before === 3
+  && bridgeMerge.voices === 2
+  && bridgeMerge.clusters.length === 2
+  && bridgeMerge.clusters.every((row) => row.label !== '' && row.segments > 0 && row.seconds > 0)
+  && bridgeMerge.maxMergeScore >= 0.62
+  && bridgeMerge.nextScore < 0.62
+  && bridgeMerge.relabelled >= 1
+  && bridgeMerge.collapsed === false,
+  JSON.stringify(bridgeMerge))
+// 同一把声音被在线分成两个标签（gallery 只会追加）时要并回一个——这是「合并发生了」的正常情形，
+// 报告必须把它和「两个人被塌成一个」区分开。
+const sameVoiceMeeting = seed('m-merge-collapse', {
+  segments: [cueOf('S1', personA, 0), cueOf('S2', vector8(1.01, 0.14), 1), cueOf('S1', vector8(0.99, 0.16), 2)],
+  speakerLabels: ['S1', 'S2'],
+})
+const sameVoiceMerge = tools.relabelSpeakers(sameVoiceMeeting, { threshold: 0.62 })
+check('同一把声音被在线分成两个标签时并回一个，并标出「合并到一个」', sameVoiceMerge.voices === 1
+  && sameVoiceMerge.before === 2
+  && sameVoiceMerge.collapsed === true,
+  JSON.stringify(sameVoiceMerge))
+// 6 段已知归属（在线标签 6/6 全对）走完真实的 /stop 路径，标签必须原样保留。
+seed('m-merge-six', {
+  segments: [
+    cueOf('S1', vector8(1.0, 0.15), 0),
+    cueOf('S2', vector8(0.15, 1.0), 1),
+    cueOf('S1', vector8(1.03, 0.12), 2),
+    cueOf('S2', vector8(0.12, 1.04), 3),
+    cueOf('S1', vector8(0.97, 0.18), 4),
+    cueOf('S2', vector8(0.18, 0.96), 5),
+  ],
+  speakerLabels: ['S1', 'S2'],
+  seconds: 24,
+})
+const sixStop = await call('/stop', { meetingId: 'm-merge-six' }, 'POST')
+check('6 段已知归属的录音走完 /stop 后与在线标签一致率 100%', sixStop.status === 200
+  && sixStop.value.segments.map((segment) => segment.speaker).join(',') === 'S1,S2,S1,S2,S1,S2',
+  JSON.stringify(sixStop.value.segments?.map((segment) => segment.speaker)))
+check('/stop 把合并前后的簇数带回来（面板与日志之外还有一份）', sixStop.value.speaker?.merge?.before === 2
+  && sixStop.value.speaker?.merge?.voices === 2
+  && sixStop.value.speaker.merge.clusters.length === 2
+  && sixStop.value.speaker.merge.relabelled === 0
+  && sixStop.value.voices === 2,
+  JSON.stringify(sixStop.value.speaker))
+// 三个人：声纹数 ≥ 2 且 ≤ 实际人数 + 1。
+const trioRows = []
+for (let round = 0; round < 3; round++) {
+  trioRows.push(cueOf('S1', vector8(1.0 + round * 0.01, 0.1, 0.02), trioRows.length))
+  trioRows.push(cueOf('S2', vector8(0.1, 1.0, 0.03 + round * 0.01), trioRows.length))
+  trioRows.push(cueOf('S3', vector8(0.02, 0.1, 1.0 + round * 0.01), trioRows.length))
+}
+const trioMerge = tools.relabelSpeakers(seed('m-merge-trio', { segments: trioRows, speakerLabels: ['S1', 'S2', 'S3'] }), { threshold: 0.62 })
+check('三个人时声纹数不少于 2 且不超过人数 + 1', trioMerge.voices >= 2 && trioMerge.voices <= 4 && trioMerge.voices === 3
+  && trioMerge.clusters.every((row) => row.segments === 3),
+  `voices=${trioMerge.voices} ${JSON.stringify(trioMerge.clusters)}`)
+// 回归守卫：旧的单链接实现（任意一对 cue 过阈值就合并）不许回来。
+const mergeSource = await fs.readFile(join(here, 'host-tools.js'), 'utf8')
+check('单链接那段已删除（不再按任意一对 cue 的余弦直接合并）', !/cosine\(vectors\[left\], vectors\[right\]\)/u.test(mergeSource))
+
+// ---------------------------------------------------------------------------
 // 7h. M4：数字日期规整、切句参数可调
 // ---------------------------------------------------------------------------
 const textTools = await import(`${plugin}/host-text.js`)

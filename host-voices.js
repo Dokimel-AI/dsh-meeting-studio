@@ -3,9 +3,10 @@
  *
  * Two things live here, both about telling people apart across meetings:
  *
- * 1. **Speaker settings** — the clustering threshold and whether the end-of-meeting pass
- *    relabels every cue or only the tail. They sit in the shared settings file (`speaker`
- *    section) because they describe this installation, not one meeting.
+ * 1. **Speaker settings** — two separate thresholds (one for matching a cue while recording, one
+ *    for deciding at stop whether two whole voices are the same person), and whether the
+ *    end-of-meeting pass relabels every cue or only the tail. They sit in the shared settings
+ *    file (`speaker` section) because they describe this installation, not one meeting.
  *
  * 2. **The voice library** (`$DSH_HOME/meeting-room/voices.json`) — one centroid per known
  *    person, and nothing else. No audio, ever. A label is only ever NAMED by a person, and the
@@ -19,7 +20,7 @@ import { readFile, writeFile, mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { VOICE_MATCH_THRESHOLD, SPEAKER_THRESHOLD, SPEAKER_BACKFILL_CAP, relabelPlanOf } from './host-constants.js'
+import { VOICE_MATCH_THRESHOLD, SPEAKER_THRESHOLD, SPEAKER_MERGE_THRESHOLD, SPEAKER_MERGE_RANGE, SPEAKER_BACKFILL_CAP, relabelPlanOf } from './host-constants.js'
 import { readSettings, writeSettings } from './host-tools.js'
 
 /** Version of the library file this module reads and writes. */
@@ -29,6 +30,9 @@ export const VOICES_VERSION = 1
 export function defaultSpeakerSettings() {
   return {
     threshold: SPEAKER_THRESHOLD,
+    // Whether two VOICES are one person at stop. Independent of `threshold` above: tuning the
+    // recording-time match must not silently re-tune the end-of-meeting merge.
+    mergeThreshold: SPEAKER_MERGE_THRESHOLD,
     // The end-of-meeting pass relabels EVERY cue by default: the 60-cue cap was the single
     // biggest cause of labels breaking apart in a long meeting.
     fullRelabel: true,
@@ -58,6 +62,8 @@ export async function readSpeakerSettings() {
   if (stored === null || typeof stored !== 'object') return speaker
   const threshold = Number(stored.threshold)
   if (Number.isFinite(threshold)) speaker.threshold = clamp(threshold, 0.3, 0.95)
+  const mergeThreshold = Number(stored.mergeThreshold)
+  if (Number.isFinite(mergeThreshold)) speaker.mergeThreshold = clamp(mergeThreshold, SPEAKER_MERGE_RANGE.low, SPEAKER_MERGE_RANGE.high)
   const suggest = Number(stored.suggestThreshold)
   if (Number.isFinite(suggest)) speaker.suggestThreshold = clamp(suggest, 0.5, 0.98)
   const cap = Number(stored.backfillCap)
@@ -78,6 +84,10 @@ export async function writeSpeakerSettings(patch) {
   const next = { ...current }
   const threshold = Number(patch?.threshold)
   if (Number.isFinite(threshold)) next.threshold = clamp(threshold, 0.3, 0.95)
+  // The merge threshold is read by the host in-process at stop, so changing it never has to
+  // restart the worker and never shows up as `thresholdChanged`.
+  const mergeThreshold = Number(patch?.mergeThreshold)
+  if (Number.isFinite(mergeThreshold)) next.mergeThreshold = clamp(mergeThreshold, SPEAKER_MERGE_RANGE.low, SPEAKER_MERGE_RANGE.high)
   const suggest = Number(patch?.suggestThreshold)
   if (Number.isFinite(suggest)) next.suggestThreshold = clamp(suggest, 0.5, 0.98)
   const cap = Number(patch?.backfillCap)

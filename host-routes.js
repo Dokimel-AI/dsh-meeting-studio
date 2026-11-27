@@ -133,6 +133,7 @@ import {
   writeScoresXlsx,
   pushTasks,
   relabelSpeakers,
+  logSpeakerMerge,
   publicSegments,
   mergeContinuation,
   splitCueIntoSentences,
@@ -913,14 +914,19 @@ export function createHandler(ctx) {
           sendJson(res, 409, { error: speakerState.message === '' ? 'speaker support is unavailable' : speakerState.message })
           return
         }
+        // The merge threshold is the end-of-meeting one, not the recording-time threshold the
+        // worker uses — the two decisions are separate on purpose.
+        const speaker = await readSpeakerSettings()
         const judged = await relabelFromRecording(ctx, meeting, { all: true })
         // The repass re-clusters every cue by its embedding, so labels and any assigned
         // names settle consistently; the vectors themselves are not needed afterwards.
-        const voices = relabelSpeakers(meeting)
+        const merge = relabelSpeakers(meeting, { threshold: speaker.mergeThreshold })
+        logSpeakerMerge(ctx, merge)
         for (const segment of meeting.segments) delete segment.embedding
         sendJson(res, 200, {
           judged,
-          voices,
+          voices: merge.voices,
+          merge,
           segments: publicSegments(meeting),
           speakers: meeting.speakers,
           labels: speakerLabels(meeting),
@@ -1493,7 +1499,7 @@ export function createHandler(ctx) {
         }
         // One end-of-recording path for every stop entry: the panel button, the
         // session leaving the store, and a forced archive all land here.
-        const voices = await finalizeRecording(ctx, meeting)
+        const merge = await finalizeRecording(ctx, meeting)
         sendJson(res, 200, {
           seconds: meeting.seconds,
           segments: publicSegments(meeting),
@@ -1504,8 +1510,10 @@ export function createHandler(ctx) {
           notes: meeting.notes,
           speakers: meeting.speakers,
           labels: speakerLabels(meeting),
-          voices,
-          speaker: { phase: speakerState.phase, message: speakerState.message },
+          voices: merge.voices,
+          // Before/after counts, each voice's size in cues and seconds, and the strongest merge.
+          // A collapse to one voice is visible here without reading any log.
+          speaker: { phase: speakerState.phase, message: speakerState.message, merge },
         })
         return
       }

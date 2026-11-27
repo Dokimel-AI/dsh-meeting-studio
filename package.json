@@ -1,6 +1,6 @@
 {
   "name": "dsh-meeting-studio",
-  "version": "0.1.0-fork.2",
+  "version": "0.1.0-fork.3",
   "forkedFrom": "https://github.com/kekydream/dsh-meeting-room",
   "description": "会议记录：本机转写、发言人分离、要点与工作安排、手写笔记、复盘与纪要 · Meeting notes inside DeepSeek Harness",
   "author": "Dokimel AI <lion20231226@outlook.com> (https://github.com/Dokimel-AI)",

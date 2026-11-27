@@ -50,7 +50,11 @@ export const SPEAKER_MODEL_ORIGINS = [
   'https://ghfast.top/https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/',
 ]
 
-/** Cosine similarity above which a cue joins an existing speaker instead of creating one. */
+/**
+ * Cosine similarity above which a cue joins an existing speaker instead of creating one.
+ * Recording-time only: this never decides whether two finished voices are one person, which is
+ * SPEAKER_MERGE_THRESHOLD below.
+ */
 export const SPEAKER_THRESHOLD = 0.6
 
 /**
@@ -244,8 +248,25 @@ export const ROLES = ['host', 'attendee', 'observer']
 /** How each role is written in a document. */
 export const ROLE_LABELS = { host: '主持人', attendee: '参会人', observer: '旁听' }
 
-/** How close two cue embeddings must be to count as one voice in the end-of-meeting pass. */
+/**
+ * How close two VOICES must be to count as one person in the end-of-meeting pass.
+ *
+ * A separate number from SPEAKER_THRESHOLD on purpose: the two answer different questions.
+ * SPEAKER_THRESHOLD decides whether one cue JOINS the voice being built while recording (cue
+ * against voice, handed to the worker process); this one decides whether two whole VOICES are the
+ * same person (cluster against cluster, used in the host at stop). While both shared one number,
+ * tightening the online threshold silently re-tuned the final merge — which is how raising it to
+ * 0.7 made the collapse worse instead of better.
+ */
 export const SPEAKER_MERGE_THRESHOLD = 0.62
+
+/**
+ * The range the merge threshold may be set to. It is wider than the region where the value behaves
+ * well (roughly 0.55–0.8: below that unrelated voices fuse, above it one person's normal variation
+ * splits into several voices), so a deliberate experiment is possible while a stray write still
+ * cannot disable merging altogether.
+ */
+export const SPEAKER_MERGE_RANGE = { low: 0.3, high: 0.95 }
 
 /** Robot webhooks a meeting's confirmed assignments can be pushed to. */
 export const WEBHOOK_KINDS = ['dingtalk', 'wecom']

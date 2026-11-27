@@ -76,7 +76,7 @@ import { flushMeetings } from './host-persistence.js'
 import { ensureMeetingForSession, meetingForSession } from './host-sessions.js'
 
 import { relabelFromRecording, knownSpeakerLabels } from './host-speaker.js'
-import { centroidsOf } from './host-voices.js'
+import { centroidsOf, readSpeakerSettings } from './host-voices.js'
 import { normalizeText } from './host-text.js'
 import { readTranscriptSettings } from './host-transcript.js'
 // R5: the cloud settings, their one whitelist and their probes live in host-providers /
@@ -1104,52 +1104,174 @@ export function cosine(left, right) {
 }
 
 /**
- * Merge every cue of one voice under a single label. The online gallery only ever adds
- * entries, so one voice can hold two labels and a noisy cue can hold one forever; this pass
- * clusters the stored embeddings instead and numbers the voices by first appearance.
+ * Merge every cue of one voice under a single label, by **average linkage**.
+ *
+ * The online gallery only ever adds entries, so one voice can hold two labels and a noisy cue can
+ * hold one forever; this pass clusters the stored embeddings instead and numbers the voices by
+ * first appearance.
+ *
+ * The merge criterion is the cosine of two CLUSTERS' centroids, never of one pair of cues. The
+ * pass this replaced used single linkage — merge as soon as ANY one pair is close — which chains:
+ * a cue that carries both voices at once (an interruption, a back-channel 嗯嗯, two people
+ * talking over each other) sits inside the threshold of both voices, and that one cue welds a
+ * whole meeting into one speaker. Measured on a 13.8-minute two-person recording at 0.62, one
+ * segment scored 0.66 / 0.69 / 0.71 against both voices and S1/S2 collapsed to S1 every stop. A
+ * mixed cue can only pull a centroid's average DOWN, so under average linkage it joins one voice
+ * instead of fusing two — which is the right answer, because the cue is genuinely ambiguous and
+ * the voices are not.
+ *
  * @param meeting - Meeting record.
- * @returns the number of voices after merging.
+ * @param options - `threshold`: cosine at or above which two voices are the same person. Defaults
+ *                  to SPEAKER_MERGE_THRESHOLD; deliberately NOT the recording-time threshold.
+ * @returns the merge report: `voices` is the number of voices after the pass (0 when fewer than
+ *          two cues carried an embedding, i.e. nothing was merged), plus the counts before and
+ *          after, each voice's size, and the strongest similarities seen. The caller logs it, so
+ *          a collapse is visible instead of silent.
  */
-export function relabelSpeakers(meeting) {
+export function relabelSpeakers(meeting, options = {}) {
+  const requested = Number(options.threshold)
+  const threshold = Number.isFinite(requested) ? requested : SPEAKER_MERGE_THRESHOLD
   const cues = meeting.segments.filter((segment) => typeof segment.embedding === 'string' && segment.embedding !== '')
-  if (cues.length < 2) return 0
+  // What the online pass left, so the report reads "6 → 2" instead of only "2".
+  const labelsBefore = new Set()
+  for (const cue of cues) if (typeof cue.speaker === 'string' && cue.speaker !== '') labelsBefore.add(cue.speaker)
+  const report = {
+    voices: 0,
+    before: labelsBefore.size,
+    cues: cues.length,
+    dropped: 0,
+    // How many cues end up under a different label than the online pass gave them. Two labels can
+    // swap numbers without the voice count changing, and that still means the repass did work.
+    relabelled: 0,
+    threshold,
+    maxMergeScore: 0,
+    nextScore: 0,
+    collapsed: false,
+    clusters: [],
+  }
+  if (cues.length < 2) return report
   const vectors = cues.map((cue) => {
     const bytes = Buffer.from(cue.embedding, 'base64')
     // Node pools small buffers, so the embedding starts at an offset inside a shared
     // ArrayBuffer; slicing copies exactly this vector out for the float view.
     return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
   })
-  // Single-linkage clustering: every pair closer than the threshold joins one voice.
-  const parent = cues.map((_, index) => index)
-  const rootOf = (index) => {
-    let current = index
-    while (parent[current] !== current) {
-      parent[current] = parent[parent[current]]
-      current = parent[current]
-    }
-    return current
+  // A model switched mid-meeting leaves vectors of another length, and a cosine across two
+  // lengths is meaningless (NaN compares false everywhere), so those cues stay out of the merge
+  // and follow the label that inherited their old one.
+  const dimension = vectors[0].length
+  const usable = []
+  for (let index = 0; index < vectors.length; index++) {
+    if (dimension > 0 && vectors[index].length === dimension) usable.push(index)
   }
-  for (let left = 0; left < cues.length; left++) {
-    for (let right = left + 1; right < cues.length; right++) {
-      if (cosine(vectors[left], vectors[right]) < SPEAKER_MERGE_THRESHOLD) continue
-      const leftRoot = rootOf(left)
-      const rightRoot = rootOf(right)
-      if (leftRoot !== rightRoot) parent[rightRoot] = leftRoot
+  report.dropped = cues.length - usable.length
+  if (usable.length < 2) return report
+  // One cluster per cue, holding the unnormalised SUM of its members' vectors: a centroid and its
+  // cosine to another centroid need nothing but the sums.
+  const clusters = usable.map((cue) => {
+    const sum = new Float64Array(dimension)
+    for (let index = 0; index < dimension; index++) sum[index] = vectors[cue][index]
+    return { sum, size: 1, members: [cue], live: true }
+  })
+  // Candidate pairs, greatest similarity first, as a binary max-heap over three parallel arrays
+  // (cheaper than one object per pair, and a long meeting can have many pairs).
+  const pairScore = []
+  const pairLeft = []
+  const pairRight = []
+  const pushPair = (score, left, right) => {
+    let hole = pairScore.length
+    pairScore.push(score)
+    pairLeft.push(left)
+    pairRight.push(right)
+    while (hole > 0) {
+      const parent = (hole - 1) >> 1
+      if (pairScore[parent] >= score) break
+      pairScore[hole] = pairScore[parent]
+      pairLeft[hole] = pairLeft[parent]
+      pairRight[hole] = pairRight[parent]
+      hole = parent
+    }
+    pairScore[hole] = score
+    pairLeft[hole] = left
+    pairRight[hole] = right
+  }
+  const popPair = () => {
+    const last = pairScore.length - 1
+    if (last < 0) return null
+    const top = { score: pairScore[0], left: pairLeft[0], right: pairRight[0] }
+    if (last === 0) {
+      pairScore.pop()
+      pairLeft.pop()
+      pairRight.pop()
+      return top
+    }
+    const score = pairScore[last]
+    const left = pairLeft[last]
+    const right = pairRight[last]
+    pairScore.pop()
+    pairLeft.pop()
+    pairRight.pop()
+    let hole = 0
+    for (;;) {
+      const child = hole * 2 + 1
+      if (child > last - 1) break
+      const pick = child + 1 <= last - 1 && pairScore[child + 1] > pairScore[child] ? child + 1 : child
+      if (pairScore[pick] <= score) break
+      pairScore[hole] = pairScore[pick]
+      pairLeft[hole] = pairLeft[pick]
+      pairRight[hole] = pairRight[pick]
+      hole = pick
+    }
+    pairScore[hole] = score
+    pairLeft[hole] = left
+    pairRight[hole] = right
+    return top
+  }
+  // A pair's similarity only changes when one of its two clusters merges, and a merging cluster is
+  // retired rather than updated in place, so every heap entry stays exact while both of its
+  // clusters are alive and is discarded when either one is gone.
+  const consider = (left, right) => {
+    const similarity = cosine(clusters[left].sum, clusters[right].sum)
+    if (similarity >= threshold) pushPair(similarity, left, right)
+  }
+  for (let left = 0; left < clusters.length; left++) {
+    for (let right = left + 1; right < clusters.length; right++) consider(left, right)
+  }
+  for (;;) {
+    const candidate = popPair()
+    if (candidate === null) break
+    if (!clusters[candidate.left].live || !clusters[candidate.right].live) continue
+    if (candidate.score > report.maxMergeScore) report.maxMergeScore = candidate.score
+    const sum = new Float64Array(dimension)
+    for (let index = 0; index < dimension; index++) sum[index] = clusters[candidate.left].sum[index] + clusters[candidate.right].sum[index]
+    const members = clusters[candidate.left].members.concat(clusters[candidate.right].members)
+    clusters[candidate.left].live = false
+    clusters[candidate.right].live = false
+    const merged = clusters.push({ sum, size: members.length, members, live: true }) - 1
+    // The merged centroid's similarity to every voice still standing is new information; every
+    // other pair is unchanged, so this is the only work one merge costs.
+    for (let other = 0; other < merged; other++) {
+      if (!clusters[other].live) continue
+      consider(merged, other)
     }
   }
-  const names = new Map()
-  // Names already assigned must follow the voice, not the old number: the rename below can
-  // change which label a voice holds, so each new group inherits the label it mostly held.
+  const live = []
+  for (let index = 0; index < clusters.length; index++) if (clusters[index].live) live.push(index)
+  const clusterOf = new Map()
+  for (const index of live) for (const member of clusters[index].members) clusterOf.set(member, index)
+  // Names already assigned must follow the voice, not the old number: the rename below can change
+  // which label a voice holds, so each new group inherits the label it mostly held.
   const tally = new Map()
   for (let index = 0; index < cues.length; index++) {
-    const root = rootOf(index)
-    const counts = tally.get(root) ?? new Map()
-    const previous = cues[index].speaker
+    const cluster = clusterOf.get(index)
+    if (cluster === undefined) continue
+    const counts = tally.get(cluster) ?? new Map()
+    const previous = typeof cues[index].speaker === 'string' ? cues[index].speaker : ''
     counts.set(previous, (counts.get(previous) ?? 0) + 1)
-    tally.set(root, counts)
+    tally.set(cluster, counts)
   }
   const inherited = new Map()
-  for (const [root, counts] of tally) {
+  for (const [cluster, counts] of tally) {
     let best = ''
     let bestCount = -1
     for (const [label, count] of counts) {
@@ -1158,20 +1280,82 @@ export function relabelSpeakers(meeting) {
         best = label
       }
     }
-    if (best !== '') inherited.set(root, best)
+    if (best !== '') inherited.set(cluster, best)
   }
+  // Number the voices by first appearance, so a transcript reads in the order the meeting happened.
+  const names = new Map()
+  const order = []
+  let relabelledCues = 0
   for (let index = 0; index < cues.length; index++) {
-    const root = rootOf(index)
-    if (!names.has(root)) names.set(root, `S${names.size + 1}`)
-    cues[index].speaker = names.get(root)
+    const cluster = clusterOf.get(index)
+    if (cluster === undefined) continue
+    if (!names.has(cluster)) {
+      names.set(cluster, `S${names.size + 1}`)
+      order.push(cluster)
+    }
+    const previous = typeof cues[index].speaker === 'string' ? cues[index].speaker : ''
+    if (previous !== '' && previous !== names.get(cluster)) relabelledCues += 1
+    cues[index].speaker = names.get(cluster)
   }
   const renamed = {}
-  for (const [root, label] of inherited) {
-    const name = meeting.speakers[label]
-    if (typeof name === 'string' && name !== '') renamed[names.get(root)] = name
+  /** Old label → the new label that inherited it, for cues the merge could not judge. */
+  const relabelled = new Map()
+  for (const [cluster, label] of inherited) {
+    const name = meeting.speakers?.[label]
+    if (typeof name === 'string' && name !== '') renamed[names.get(cluster)] = name
+    if (!relabelled.has(label)) relabelled.set(label, names.get(cluster))
+  }
+  for (let index = 0; index < cues.length; index++) {
+    if (clusterOf.has(index)) continue
+    const previous = typeof cues[index].speaker === 'string' ? cues[index].speaker : ''
+    if (relabelled.has(previous)) cues[index].speaker = relabelled.get(previous)
   }
   meeting.speakers = renamed
-  return names.size
+  // The closest pair that did NOT merge: the headroom left before the next two voices would fuse.
+  // Only the surviving voices are compared, so this costs next to nothing for a normal meeting.
+  let closestNotMerged = 0
+  for (let first = 0; first < live.length; first++) {
+    for (let second = first + 1; second < live.length; second++) {
+      const similarity = cosine(clusters[live[first]].sum, clusters[live[second]].sum)
+      if (similarity > closestNotMerged) closestNotMerged = similarity
+    }
+  }
+  report.voices = live.length
+  report.relabelled = relabelledCues
+  report.maxMergeScore = Number(report.maxMergeScore.toFixed(3))
+  report.nextScore = Number(closestNotMerged.toFixed(3))
+  report.collapsed = report.before > 1 && report.voices === 1
+  report.clusters = order.map((cluster) => {
+    let seconds = 0
+    for (const member of clusters[cluster].members) {
+      const cue = cues[member]
+      const span = Number(cue.end) - Number(cue.start)
+      if (Number.isFinite(span) && span > 0) seconds += span
+    }
+    return { label: names.get(cluster), segments: clusters[cluster].size, seconds: Math.round(seconds) }
+  })
+  return report
+}
+
+/**
+ * Write the end-of-meeting merge into the log. A collapse is the line that must be unmistakable,
+ * so it is a warning that names both counts and the voice layout that resulted.
+ * @param ctx - Host context; the logger may be absent in a test harness.
+ * @param merge - the report from relabelSpeakers.
+ */
+export function logSpeakerMerge(ctx, merge) {
+  if (merge === undefined) return
+  if (merge.cues < 2) {
+    ctx?.logger?.info?.('dsh-meeting-room: speaker merge skipped: %s cue(s) carried an embedding', merge.cues)
+    return
+  }
+  const layout = merge.clusters.map((cluster) => `${cluster.label} ${cluster.segments}段/${cluster.seconds}秒`).join('，')
+  const detail = `合并前 ${merge.before} 个标签 → 合并后 ${merge.voices} 个声纹（参与 ${merge.cues} 条、${merge.relabelled} 条 cue 改了标签、阈值 ${merge.threshold}、最大合并相似度 ${merge.maxMergeScore}、最近未合并 ${merge.nextScore}）${layout === '' ? '' : `；${layout}`}`
+  if (merge.collapsed) {
+    ctx?.logger?.warn?.('dsh-meeting-room: speaker merge left ONE voice (合并前 %s 个标签) — 若实际不止一个人，检查 mergeThreshold: %s', merge.before, detail)
+    return
+  }
+  ctx?.logger?.info?.('dsh-meeting-room: speaker merge: %s', detail)
 }
 
 /**
@@ -1183,7 +1367,7 @@ export function relabelSpeakers(meeting) {
  * re-flushes an unchanged record.
  * @param ctx - Host context, used to flush the finalized record.
  * @param meeting - Meeting whose recording ends.
- * @returns the number of voices after the whole-meeting repass.
+ * @returns the merge report from the whole-meeting repass (see relabelSpeakers).
  */
 export async function finalizeRecording(ctx, meeting) {
   if (meeting.controller !== undefined && !meeting.controller.signal.aborted) {
@@ -1203,7 +1387,10 @@ export async function finalizeRecording(ctx, meeting) {
   // still holds every cue's audio, so judge the unlabeled ones from it now. By default this
   // covers EVERY cue: the old 60-cue cap was the main reason labels broke apart in a long
   // meeting. `fullRelabel: false` in the speaker settings restores a capped tail pass.
-  const plan = relabelPlanOf((await readSettings()).speaker)
+  // The speaker settings also carry the merge threshold — a different number from the
+  // recording-time one, read here because this is the only place the merge happens.
+  const speakerSettings = await readSpeakerSettings()
+  const plan = relabelPlanOf(speakerSettings)
   let backfilled = 0
   try {
     backfilled = await relabelFromRecording(ctx, meeting, plan)
@@ -1213,7 +1400,10 @@ export async function finalizeRecording(ctx, meeting) {
   if (backfilled > 0) ctx?.logger?.info('dsh-meeting-room: backfilled %d unlabeled cue(s) at stop', backfilled)
   // The recording is finished, so the cues can be re-clustered as a whole: the online
   // gallery cannot split or merge what it has already labelled.
-  const voices = relabelSpeakers(meeting)
+  const merge = relabelSpeakers(meeting, { threshold: speakerSettings.mergeThreshold })
+  // Before/after counts, each voice's size and the strongest merge — a collapse to one voice is
+  // the failure this pass exists to prevent, and it used to happen with no trace in the log.
+  logSpeakerMerge(ctx, merge)
   // Keep one centroid per voice before the per-cue vectors go: the voice library is written
   // when a person NAMES a speaker, which happens after the meeting, and a centroid is all it
   // needs. Centroids are never persisted (see recordOf) and never leave this machine.
@@ -1222,7 +1412,7 @@ export async function finalizeRecording(ctx, meeting) {
   // does not keep every cue's vector in memory for the rest of the session.
   for (const segment of meeting.segments) delete segment.embedding
   void flushMeetings(ctx)
-  return voices
+  return merge
 }
 
 /** A spoken sentence ends here; a cue that does not end this way is still going on. */
